@@ -1,5 +1,6 @@
 import * as Tone from 'tone';
 import type { SequenceToken } from './sequencing';
+import { emitNotePlay } from './noteEvents';
 
 export type VoicingPosition = {
   string: number;
@@ -8,10 +9,10 @@ export type VoicingPosition = {
 
 let synth: Tone.PolySynth | null = null;
 let clickSynth: Tone.Synth | null = null;
-let clickLoop: Tone.Loop | null = null;
 let sequencePart: Tone.Part | null = null;
 let toneReady = false;
 let unlockRegistered = false;
+let masterVolume = 0.6;
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined';
@@ -51,7 +52,6 @@ async function ensureAudio(): Promise<boolean> {
   }
   if (!synth) {
     synth = new Tone.PolySynth(Tone.Synth).toDestination();
-    synth.set({ volume: -6 });
   }
   if (!clickSynth) {
     clickSynth = new Tone.Synth({
@@ -59,6 +59,7 @@ async function ensureAudio(): Promise<boolean> {
       envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 },
     }).toDestination();
   }
+  applyVolume();
   return true;
 }
 
@@ -69,29 +70,52 @@ export async function setBpm(bpm: number): Promise<void> {
   Tone.Transport.bpm.rampTo(bpm, 0.05);
 }
 
-export async function playSequence(sequence: SequenceToken[], options: { loop?: boolean } = {}): Promise<void> {
+type PlayOptions = {
+  loop?: boolean;
+  countIn?: number;
+  masterVolume?: number;
+};
+
+export async function playSequence(sequence: SequenceToken[], options: PlayOptions = {}): Promise<void> {
   if (!sequence.length) {
     return;
   }
   if (!(await ensureAudio())) {
     return;
   }
-  disposeSequence();
   const subdivision = Tone.Time('8n').toSeconds();
-  const events = sequence.map((step, index) => ({
-    time: index * subdivision,
-    note: step.midi,
+  const beatSeconds = Tone.Time('4n').toSeconds();
+  const countInBeats = options.countIn ?? 0;
+  const countInSeconds = countInBeats * beatSeconds;
+
+  if (typeof options.masterVolume === 'number') {
+    setGlobalVolume(options.masterVolume);
+  }
+
+  disposeSequence();
+  const events = sequence.map((step) => ({
+    time: step.sequenceIndex * subdivision,
+    midi: step.midi,
+    id: step.id,
+    sequenceIndex: step.sequenceIndex,
   }));
-  sequencePart = new Tone.Part((time, value: { note: number }) => {
-    const frequency = Tone.Frequency(value.note, 'midi').toFrequency();
+  sequencePart = new Tone.Part((time, value: { midi: number; id: string; sequenceIndex: number }) => {
+    emitNotePlay(value.id, value.sequenceIndex);
+    const frequency = Tone.Frequency(value.midi, 'midi').toFrequency();
     synth!.triggerAttackRelease(frequency, '8n', time);
   }, events as any);
   if (sequencePart) {
-    sequencePart.loop = options.loop ?? false;
-    sequencePart.loopEnd = `${sequence.length / 2}m`;
+    const loopEnabled = options.loop ?? false;
+    sequencePart.loop = loopEnabled;
+    if (loopEnabled) {
+      sequencePart.loopStart = subdivision;
+      sequencePart.loopEnd = sequence.length * subdivision;
+    }
     Tone.Transport.stop();
+    Tone.Transport.cancel();
     Tone.Transport.position = 0;
-    sequencePart.start(0);
+    scheduleCountIn(countInBeats, beatSeconds);
+    sequencePart.start(countInSeconds);
     Tone.Transport.start();
   }
 }
@@ -103,32 +127,20 @@ export function stopAll(): void {
   disposeSequence();
   Tone.Transport.stop();
   Tone.Transport.position = 0;
-  stopClick();
+  emitNotePlay(null, null);
 }
 
-export async function startClick(): Promise<void> {
-  if (!(await ensureAudio())) {
-    return;
-  }
-  if (clickLoop) {
-    return;
-  }
-  clickLoop = new Tone.Loop((time) => {
-    clickSynth!.triggerAttackRelease('C6', '32n', time);
-  }, '4n');
-  clickLoop.start(0);
-  if (!Tone.Transport.state || Tone.Transport.state !== 'started') {
-    Tone.Transport.start();
-  }
+const MIN_DB = -36;
+const MAX_DB = -6;
+
+function normalizedToDb(value: number): number {
+  const clamped = Math.min(1, Math.max(0, value));
+  return MIN_DB + (MAX_DB - MIN_DB) * clamped;
 }
 
-export function stopClick(): void {
-  if (!clickLoop) {
-    return;
-  }
-  clickLoop.stop();
-  clickLoop.cancel();
-  clickLoop = null;
+export function setGlobalVolume(value: number): void {
+  masterVolume = Math.min(1, Math.max(0, value));
+  applyVolume();
 }
 
 export async function playChord(voicing: VoicingPosition[], tuningMidi: number[]): Promise<void> {
@@ -156,5 +168,27 @@ function disposeSequence(): void {
     sequencePart.stop();
     sequencePart.dispose();
     sequencePart = null;
+  }
+  emitNotePlay(null, null);
+}
+
+function applyVolume(): void {
+  const db = normalizedToDb(masterVolume);
+  if (synth) {
+    synth.volume.value = db;
+  }
+  if (clickSynth) {
+    clickSynth.volume.value = db;
+  }
+}
+
+function scheduleCountIn(beats: number, beatSeconds: number): void {
+  if (!beats) {
+    return;
+  }
+  for (let i = 0; i < beats; i += 1) {
+    Tone.Transport.schedule((time) => {
+      clickSynth?.triggerAttackRelease('C6', '16n', time);
+    }, i * beatSeconds);
   }
 }

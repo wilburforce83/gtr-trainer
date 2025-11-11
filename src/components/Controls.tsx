@@ -20,8 +20,8 @@ export interface ControlsProps {
   isPlaying: boolean;
   loop: boolean;
   onLoopToggle: (state: boolean) => void;
-  metronome: boolean;
-  onMetronomeToggle: (state: boolean) => void;
+  volume: number;
+  onVolumeChange: (value: number) => void;
   onRelativeToggle: () => void;
   canFlipRelative: boolean;
 }
@@ -47,8 +47,8 @@ export function Controls(props: ControlsProps) {
     isPlaying,
     loop,
     onLoopToggle,
-    metronome,
-    onMetronomeToggle,
+    volume,
+    onVolumeChange,
     onRelativeToggle,
     canFlipRelative,
   } = props;
@@ -132,13 +132,15 @@ export function Controls(props: ControlsProps) {
         <label className="toggle">
           <input type="checkbox" checked={loop} onChange={(event) => onLoopToggle(event.target.checked)} /> Loop
         </label>
-        <label className="toggle">
+        <label className="slider">
+          Volume
           <input
-            type="checkbox"
-            checked={metronome}
-            onChange={(event) => onMetronomeToggle(event.target.checked)}
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(volume * 100)}
+            onChange={(event) => onVolumeChange(Number(event.target.value) / 100)}
           />
-          Metronome
         </label>
       </div>
     </section>
