@@ -10,7 +10,8 @@ export type VoicingPosition = {
 
 let clickSynth: Tone.Synth | null = null;
 let sequencePart: Tone.Part | null = null;
-let masterVolume = 0.6;
+let masterVolume = 0.85;
+const METRONOME_GAIN_DB = -30;
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined';
@@ -47,6 +48,7 @@ async function ensureAudio(): Promise<{ sampler: Tone.Sampler } | null> {
         oscillator: { type: 'triangle' },
         envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 },
       }).toDestination();
+      clickSynth.volume.value = METRONOME_GAIN_DB;
     }
     applyVolume();
     return { sampler };
@@ -78,6 +80,7 @@ export async function playSequence(sequence: SequenceToken[], options: PlayOptio
     return;
   }
   const sampler = ready.sampler;
+  sampler.volume.value = 10;
   const subdivision = Tone.Time('8n').toSeconds();
   const beatSeconds = Tone.Time('4n').toSeconds();
   const countInBeats = options.countIn ?? 0;
@@ -125,7 +128,7 @@ export function stopAll(): void {
 }
 
 const MIN_DB = -36;
-const MAX_DB = -6;
+const MAX_DB = 0;
 
 function normalizedToDb(value: number): number {
   const clamped = Math.min(1, Math.max(0, value));
@@ -189,7 +192,7 @@ function disposeSequence(): void {
 function applyVolume(): void {
   setSamplerVolume(masterVolume).catch(() => {});
   if (clickSynth) {
-    clickSynth.volume.value = normalizedToDb(masterVolume);
+    clickSynth.volume.value = normalizedToDb(masterVolume) + METRONOME_GAIN_DB;
   }
 }
 

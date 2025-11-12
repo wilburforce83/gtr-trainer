@@ -33,7 +33,7 @@ function ScalesPage() {
   const [positionIndex, setPositionIndex] = useState(0);
   const [bpm, setBpmValue] = useState(70);
   const [loop, setLoop] = useState(false);
-  const [masterVolume, setMasterVolume] = useState(0.6);
+  const [masterVolume, setMasterVolume] = useState(0.85);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const fretboardRef = useRef<HTMLDivElement>(null);
@@ -86,7 +86,7 @@ function ScalesPage() {
       return;
     }
     await setBpm(bpm);
-    await playSequence(sequence, { loop, countIn: 8, masterVolume });
+    await playSequence(sequence, { loop, countIn: 4, masterVolume });
     setIsPlaying(true);
   };
 

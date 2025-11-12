@@ -10,8 +10,13 @@ export {
   setReverbAmount,
   setTapeAmount,
   setToneAmount,
+  AMP_PROFILES,
+  setAmpProfile,
+  INSTRUMENT_OPTIONS,
+  setInstrument,
+  setInstrumentOctaveShift,
 } from '../lib/samplePlayer';
-export type { EffectSettings } from '../lib/samplePlayer';
+export type { EffectSettings, AmpProfile } from '../lib/samplePlayer';
 
 type StrumMode = 'arpeggio' | 'strum' | 'picked';
 

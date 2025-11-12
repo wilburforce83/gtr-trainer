@@ -116,6 +116,26 @@ body {
   gap: 1.5rem;
 }
 
+.home-attributions {
+  margin-top: auto;
+  text-align: center;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+.home-attributions small {
+  font-size: 0.8rem;
+}
+
+.home-attributions a {
+  color: #38bdf8;
+  text-decoration: none;
+}
+
+.home-attributions a:hover {
+  text-decoration: underline;
+}
+
 .hero-card {
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.4);

@@ -16,12 +16,16 @@ import {
   playProgression,
   stopPlayback,
   setTransportBpm,
-  setMetronomeEnabled,
   primeChordAudioUnlock,
   setReverbAmount as applyReverbAmount,
   setToneAmount as applyToneAmount,
   setTapeAmount as applyTapeAmount,
+  setAmpProfile as applyAmpProfile,
+  setInstrument as applyInstrument,
+  setInstrumentOctaveShift as applyInstrumentOctaveShift,
   DEFAULT_EFFECT_SETTINGS,
+  AMP_PROFILES,
+  INSTRUMENT_OPTIONS,
 } from '../chords/audio';
 import { STANDARD_TUNING, tuningToMidi, buildNeckMarkers } from '../lib/neck';
 import { buildPositions } from '../lib/positions';
@@ -55,6 +59,14 @@ const { reverb: DEFAULT_REVERB, tone: DEFAULT_TONE, tape: DEFAULT_TAPE } = DEFAU
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 const readEffectValue = (value: unknown, fallback: number) => (typeof value === 'number' ? clamp01(value) : fallback);
+const DEFAULT_PIANO_OCTAVE_SHIFT = -1;
+const PIANO_OCTAVE_OPTIONS = [-2, -1, 0, 1, 2];
+const clampOctaveShiftValue = (value: number) => {
+  if (Number.isNaN(value)) {
+    return DEFAULT_PIANO_OCTAVE_SHIFT;
+  }
+  return Math.min(PIANO_OCTAVE_OPTIONS[PIANO_OCTAVE_OPTIONS.length - 1], Math.max(PIANO_OCTAVE_OPTIONS[0], Math.round(value)));
+};
 
 const MODE_TO_SCALE_ID: Partial<Record<ModeName, string>> = {
   ionian: 'ionian',
@@ -85,7 +97,6 @@ export default function ChordsPage() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [bpm, setBpm] = useState(84);
   const [loop, setLoop] = useState(false);
-  const [metronome, setMetronome] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [arpeggioMode, setArpeggioMode] = useState<'arpeggio' | 'strum' | 'picked'>('arpeggio');
   const [panelTab, setPanelTab] = useState<PanelTab>('voicings');
@@ -93,6 +104,9 @@ export default function ChordsPage() {
   const [toneAmount, setToneAmountState] = useState(DEFAULT_TONE);
   const [tapeAmount, setTapeAmountState] = useState(DEFAULT_TAPE);
   const [scalePositionIndex, setScalePositionIndex] = useState(0);
+  const [ampProfileId, setAmpProfileId] = useState(AMP_PROFILES[0].id);
+  const [instrumentId, setInstrumentId] = useState(INSTRUMENT_OPTIONS[0].id);
+  const [pianoOctaveShift, setPianoOctaveShift] = useState(DEFAULT_PIANO_OCTAVE_SHIFT);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -109,7 +123,19 @@ export default function ChordsPage() {
       setStyle(parsed.style ?? 'neo-soul');
       setBpm(parsed.bpm ?? 84);
       setLoop(parsed.loop ?? false);
-      setMetronome(parsed.metronome ?? false);
+      if (typeof parsed.ampProfileId === 'string') {
+        const exists = AMP_PROFILES.some((profile) => profile.id === parsed.ampProfileId);
+        setAmpProfileId(exists ? parsed.ampProfileId : AMP_PROFILES[0].id);
+      }
+      if (typeof parsed.instrumentId === 'string') {
+        const exists = INSTRUMENT_OPTIONS.some((option) => option.id === parsed.instrumentId);
+        setInstrumentId(exists ? parsed.instrumentId : INSTRUMENT_OPTIONS[0].id);
+      }
+      if (typeof parsed.pianoOctaveShift === 'number') {
+        setPianoOctaveShift(clampOctaveShiftValue(parsed.pianoOctaveShift));
+      } else {
+        setPianoOctaveShift(DEFAULT_PIANO_OCTAVE_SHIFT);
+      }
       const effects = parsed.effects ?? {};
       setReverbAmountState(readEffectValue(effects.reverb, DEFAULT_REVERB));
       setToneAmountState(readEffectValue(effects.tone, DEFAULT_TONE));
@@ -133,16 +159,18 @@ export default function ChordsPage() {
       bars,
       bpm,
       loop,
-      metronome,
       cells,
       effects: {
         reverb: reverbAmount,
         tone: toneAmount,
         tape: tapeAmount,
       },
+      ampProfileId,
+      instrumentId,
+      pianoOctaveShift,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [keyName, mode, style, bars, bpm, loop, metronome, cells, reverbAmount, toneAmount, tapeAmount]);
+  }, [keyName, mode, style, bars, bpm, loop, cells, reverbAmount, toneAmount, tapeAmount, ampProfileId, instrumentId, pianoOctaveShift]);
 
   const applyVoicings = useCallback((draft: HarmonyCell[]): HarmonyCell[] => {
     let prev: Voicing | undefined;
@@ -217,6 +245,22 @@ export default function ChordsPage() {
   useEffect(() => {
     applyTapeAmount(tapeAmount);
   }, [tapeAmount]);
+
+  useEffect(() => {
+    applyAmpProfile(ampProfileId);
+  }, [ampProfileId]);
+
+  useEffect(() => {
+    applyInstrument(instrumentId).catch(() => {});
+  }, [instrumentId]);
+
+  useEffect(() => {
+    if (instrumentId === 'piano') {
+      applyInstrumentOctaveShift(pianoOctaveShift);
+    } else {
+      applyInstrumentOctaveShift(0);
+    }
+  }, [instrumentId, pianoOctaveShift]);
 
   const selectedCell = cells.find((cell) => cell.index === selectedIndex) ?? cells[0];
   const voicingOptions = useMemo(() => {
@@ -359,8 +403,7 @@ export default function ChordsPage() {
       return;
     }
     const tempoReady = await setTransportBpm(bpm);
-    const metroReady = await setMetronomeEnabled(metronome);
-    if (!tempoReady || !metroReady) {
+    if (!tempoReady) {
       return;
     }
     const started = await playProgression(cells, loop, { mode: arpeggioMode });
@@ -370,11 +413,6 @@ export default function ChordsPage() {
   const handleStop = () => {
     stopPlayback();
     setIsPlaying(false);
-  };
-
-  const handleToggleMetronome = async (value: boolean) => {
-    setMetronome(value);
-    await setMetronomeEnabled(value);
   };
 
   const handleReverbChange = (value: number) => {
@@ -389,7 +427,20 @@ export default function ChordsPage() {
     setTapeAmountState(clamp01(value));
   };
 
+  const handleAmpChange = (value: string) => {
+    setAmpProfileId(value);
+  };
+
+  const handleInstrumentChange = (value: string) => {
+    setInstrumentId(value);
+  };
+
+  const handlePianoOctaveShiftChange = (value: number) => {
+    setPianoOctaveShift(clampOctaveShiftValue(value));
+  };
+
   const altChords = selectedCell ? buildAltChords(selectedCell.symbol) : [];
+  const isPianoSelected = instrumentId === 'piano';
 
   return (
     <div className="chords-shell">
@@ -565,22 +616,30 @@ export default function ChordsPage() {
             <Transport
               bpm={bpm}
               loop={loop}
-              metronome={metronome}
               isPlaying={isPlaying}
               onBpmChange={setBpm}
               onPlay={handlePlay}
               onStop={handleStop}
               onToggleLoop={setLoop}
-              onToggleMetronome={handleToggleMetronome}
-              mode={arpeggioMode}
-              onModeChange={setArpeggioMode}
-              reverb={reverbAmount}
-              tone={toneAmount}
-              tape={tapeAmount}
-              onReverbChange={handleReverbChange}
-              onToneChange={handleToneChange}
-              onTapeChange={handleTapeChange}
-            />
+            mode={arpeggioMode}
+            onModeChange={setArpeggioMode}
+            reverb={reverbAmount}
+            tone={toneAmount}
+            tape={tapeAmount}
+            onReverbChange={handleReverbChange}
+            onToneChange={handleToneChange}
+            onTapeChange={handleTapeChange}
+            ampProfiles={AMP_PROFILES}
+            ampId={ampProfileId}
+            onAmpChange={handleAmpChange}
+            instrument={instrumentId}
+            instrumentOptions={INSTRUMENT_OPTIONS}
+            onInstrumentChange={handleInstrumentChange}
+            showOctaveShift={isPianoSelected}
+            octaveShift={isPianoSelected ? pianoOctaveShift : 0}
+            octaveShiftOptions={PIANO_OCTAVE_OPTIONS}
+            onOctaveShiftChange={handlePianoOctaveShiftChange}
+          />
           </div>
         </section>
 

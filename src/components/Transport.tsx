@@ -3,13 +3,11 @@ type StrumMode = 'arpeggio' | 'strum' | 'picked';
 type Props = {
   bpm: number;
   loop: boolean;
-  metronome: boolean;
   isPlaying: boolean;
   onBpmChange(value: number): void;
   onPlay(): void;
   onStop(): void;
   onToggleLoop(value: boolean): void;
-  onToggleMetronome(value: boolean): void;
   mode: StrumMode;
   onModeChange(mode: StrumMode): void;
   reverb: number;
@@ -18,6 +16,16 @@ type Props = {
   onReverbChange(value: number): void;
   onToneChange(value: number): void;
   onTapeChange(value: number): void;
+  ampProfiles: Array<{ id: string; label: string }>;
+  ampId: string;
+  onAmpChange(id: string): void;
+  instrument: string;
+  instrumentOptions: Array<{ id: string; label: string }>;
+  onInstrumentChange(id: string): void;
+  showOctaveShift: boolean;
+  octaveShift: number;
+  octaveShiftOptions: number[];
+  onOctaveShiftChange(value: number): void;
 };
 
 const MODE_OPTIONS: StrumMode[] = ['arpeggio', 'strum', 'picked'];
@@ -25,13 +33,11 @@ const MODE_OPTIONS: StrumMode[] = ['arpeggio', 'strum', 'picked'];
 export default function Transport({
   bpm,
   loop,
-  metronome,
   isPlaying,
   onBpmChange,
   onPlay,
   onStop,
   onToggleLoop,
-  onToggleMetronome,
   mode,
   onModeChange,
   reverb,
@@ -40,6 +46,16 @@ export default function Transport({
   onReverbChange,
   onToneChange,
   onTapeChange,
+  ampProfiles,
+  ampId,
+  onAmpChange,
+  instrument,
+  instrumentOptions,
+  onInstrumentChange,
+  showOctaveShift,
+  octaveShift,
+  octaveShiftOptions,
+  onOctaveShiftChange,
 }: Props) {
   return (
     <div className="transport-bar">
@@ -69,14 +85,6 @@ export default function Transport({
             <input type="checkbox" checked={loop} onChange={(event) => onToggleLoop(event.target.checked)} />
             Loop
           </label>
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={metronome}
-              onChange={(event) => onToggleMetronome(event.target.checked)}
-            />
-            Metronome
-          </label>
           <label>
             Style
             <select value={mode} onChange={(event) => onModeChange(event.target.value as StrumMode)}>
@@ -87,6 +95,38 @@ export default function Transport({
               ))}
             </select>
           </label>
+          <label>
+            Amp
+            <select value={ampId} onChange={(event) => onAmpChange(event.target.value)}>
+              {ampProfiles.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Instrument
+            <select value={instrument} onChange={(event) => onInstrumentChange(event.target.value)}>
+              {instrumentOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {showOctaveShift && (
+            <label>
+              Octave
+              <select value={octaveShift} onChange={(event) => onOctaveShiftChange(Number(event.target.value))}>
+                {octaveShiftOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option > 0 ? `+${option}` : option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
       </div>
       <div className="transport-effects">

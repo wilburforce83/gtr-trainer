@@ -28,6 +28,45 @@ export default function Home() {
           to="/chords"
         />
       </section>
+
+      <section className="home-attributions">
+        <p className="eyebrow">Attributions & Thanks</p>
+        <small>
+          Guitar samples courtesy of{' '}
+          <a href="https://karoryfer.com/karoryfer-samples" target="_blank" rel="noreferrer">
+            Karoryfer Lecolds Black Hofner
+          </a>
+          . Powered by{' '}
+          <a href="https://react.dev/" target="_blank" rel="noreferrer">
+            React
+          </a>
+          ,{' '}
+          <a href="https://vitejs.dev/" target="_blank" rel="noreferrer">
+            Vite
+          </a>
+          ,{' '}
+          <a href="https://tonejs.github.io/" target="_blank" rel="noreferrer">
+            Tone.js
+          </a>
+          ,{' '}
+          <a href="https://github.com/tonaljs/tonal" target="_blank" rel="noreferrer">
+            Tonal
+          </a>
+          ,{' '}
+          <a href="https://github.com/SleepingIRL/svguitar" target="_blank" rel="noreferrer">
+            SVGuitar
+          </a>
+          ,{' '}
+          <a href="https://github.com/moonwave99/fretboard.js" target="_blank" rel="noreferrer">
+            Fretboard.js
+          </a>
+          , and{' '}
+          <a href="https://www.vexflow.com/" target="_blank" rel="noreferrer">
+            VexFlow
+          </a>
+          .
+        </small>
+      </section>
     </main>
   );
 }
