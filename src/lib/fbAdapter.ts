@@ -15,9 +15,19 @@ const ROOT_COLORS: Record<string, string> = {
 };
 const ACTIVE_COLOR = '#fb923c';
 
+type FretboardOptions = {
+  frets?: number;
+  tuning?: string[];
+  width?: number;
+  height?: number;
+  dotSize?: number;
+  dotTextSize?: number;
+  dotStrokeWidth?: number;
+};
+
 export function mountFretboard(
   container: HTMLElement,
-  options: Partial<{ frets: number; tuning: string[]; width: number; height: number }> = {},
+  options: FretboardOptions = {},
 ): FretboardHandle {
   const frets = options.frets ?? 22;
   const tuning = options.tuning ?? DEFAULT_TUNING;
@@ -27,11 +37,11 @@ export function mountFretboard(
     stringCount: tuning.length,
     tuning,
     width: options.width ?? 1000,
-    height: options.height ?? 260,
-    dotSize: 29,
-    dotTextSize: 14,
-    dotStrokeWidth: 1,
-    dotFill: '#1f2937',
+    height: options.height ?? 220,
+    dotSize: options.dotSize ?? 23,
+    dotTextSize: options.dotTextSize ?? 11,
+    dotStrokeWidth: options.dotStrokeWidth ?? 0.8,
+    dotFill: '#111827',
     dotText: (dot: any) => dot.text ?? dot.note ?? '',
   });
   board.render();

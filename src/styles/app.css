@@ -81,9 +81,33 @@ body {
   background: radial-gradient(circle at top, rgba(59, 130, 246, 0.25), transparent 60%);
 }
 
+.home-hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  align-items: stretch;
+}
+
+.home-hero__copy {
+  flex: 1 1 280px;
+  max-width: 520px;
+}
+
 .home-hero h1 {
   font-size: clamp(2rem, 4vw, 3.5rem);
   margin: 0 0 0.5rem;
+}
+
+.home-hero__image {
+  flex: 1 1 320px;
+  min-height: 320px;
+  border-radius: 28px;
+  background-image: linear-gradient(130deg, rgba(2, 6, 23, 0.25), rgba(2, 6, 23, 0.75)),
+    url('/images/home-guitar.jpg');
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 25px 65px rgba(2, 6, 23, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
 .hero-grid {
@@ -531,8 +555,7 @@ body {
 .chords-lower-grid {
   margin-top: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: 1fr;
+  grid-template-columns: 1.62fr 1.0fr 0.75fr;
   grid-auto-rows: minmax(0, 1fr);
   gap: 1rem;
   flex: 1 1 0;
@@ -544,7 +567,7 @@ body {
   min-height: 0;
 }
 
-.voicing-summary,
+.scale-pane,
 .voicing-options,
 .transport-pane {
   background: rgba(2, 6, 23, 0.9);
@@ -557,42 +580,57 @@ body {
   min-height: 0;
 }
 
-.voicing-summary {
-  flex-direction: row;
-  align-items: stretch;
-  gap: 1.25rem;
-}
-
-.voicing-summary__meta {
-  flex: 0 0 220px;
-  display: flex;
+.scale-pane {
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
-.voicing-summary__meta .eyebrow {
-  margin-bottom: 0.1rem;
+.scale-pane__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
 }
 
-.voicing-summary__meta button {
-  margin-top: auto;
-  align-self: flex-start;
+.scale-position-toggle {
+  display: flex;
+  gap: 0.35rem;
 }
 
-.voicing-summary__diagram {
+.scale-position-toggle button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid #334155;
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.scale-position-toggle button.active {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.scale-position-toggle .muted {
+  font-size: 0.8rem;
+  align-self: center;
+}
+
+.scale-pane__board {
   flex: 1;
+  min-height: 0;
   display: flex;
 }
 
-.voicing-summary .chord-diagram {
-  max-height: 280px;
-  width: 100%;
-}
-
-.voicing-summary .diagram-surface {
-  min-height: 0;
-  height: auto;
-  max-height: 240px;
+.scale-pane__board .fretboard {
+  height: 100%;
+  min-height: 220px;
 }
 
 .voicing-options {
@@ -612,12 +650,12 @@ body {
 .transport-pane .transport-bar {
   width: 100%;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .transport-pane .transport-actions {
   width: 100%;
-  justify-content: flex-start;
+  justify-content: space-between;
   flex-wrap: wrap;
 }
 
@@ -634,23 +672,23 @@ body {
 }
 
 @media (max-width: 900px) {
-  .voicing-summary {
+  .scale-pane__header {
     flex-direction: column;
+    align-items: flex-start;
   }
-  .voicing-summary__meta {
-    flex: 0 0 auto;
-  }
-  .voicing-summary__meta button {
-    align-self: flex-start;
+  .scale-position-toggle {
+    margin-top: 0.5rem;
   }
 }
 
 .app-shell {
   min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  padding: 1.25rem clamp(1rem, 3vw, 2.5rem);
+  gap: 1rem;
+  padding: clamp(1rem, 3vw, 2.5rem);
+  overflow: hidden;
 }
 
 .controls {
@@ -768,24 +806,29 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
-  padding-bottom: 2rem;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+  min-height: 0;
 }
 
 .surface {
-  width: min(90vw, var(--content-max-width));
+  width: min(92vw, var(--content-max-width));
   margin: 0 auto;
   background: #0b1220;
   border: 1px solid #1e293b;
   border-radius: 12px;
-  padding: clamp(1rem, 2vw, 1.5rem);
+  padding: clamp(0.75rem, 1.5vw, 1.15rem);
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
+.surface + .surface {
+  margin-top: 0.85rem;
+}
+
 .fretboard-container {
-  height: clamp(260px, 40vh, 480px);
+  height: clamp(220px, 36vh, 440px);
 }
 
 .fretboard {
@@ -797,6 +840,7 @@ button:disabled {
   background: transparent;
   border-color: rgba(248, 250, 252, 0.28);
   box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.15);
+  padding: clamp(0.35rem, 0.9vw, 0.6rem);
 }
 
 .fretboard svg,
@@ -821,7 +865,7 @@ button:disabled {
 }
 
 .toolbar {
-  width: min(90vw, var(--content-max-width));
+  width: min(92vw, var(--content-max-width));
   margin: 0 auto;
   display: flex;
   gap: 1rem;

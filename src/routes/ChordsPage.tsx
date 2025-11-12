@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Chord, Note } from '@tonaljs/tonal';
 import BackButton from '../components/BackButton';
 import ProgressionEditor from '../components/ProgressionEditor';
-import ChordDiagram from '../components/ChordDiagram';
 import ChordList from '../components/ChordList';
 import Transport from '../components/Transport';
 import {
@@ -24,8 +23,11 @@ import {
   setTapeAmount as applyTapeAmount,
   DEFAULT_EFFECT_SETTINGS,
 } from '../chords/audio';
-import { STANDARD_TUNING, tuningToMidi } from '../lib/neck';
+import { STANDARD_TUNING, tuningToMidi, buildNeckMarkers } from '../lib/neck';
+import { buildPositions } from '../lib/positions';
 import { renderChordDiagram } from '../chords/svguitar';
+import FretboardView from '../components/FretboardView';
+import { getScaleById } from '../scales';
 
 const STORAGE_KEY = 'gtr-chords-state-v1';
 const RESOLUTION = '1/2';
@@ -54,6 +56,15 @@ const { reverb: DEFAULT_REVERB, tone: DEFAULT_TONE, tape: DEFAULT_TAPE } = DEFAU
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 const readEffectValue = (value: unknown, fallback: number) => (typeof value === 'number' ? clamp01(value) : fallback);
 
+const MODE_TO_SCALE_ID: Partial<Record<ModeName, string>> = {
+  ionian: 'ionian',
+  aeolian: 'aeolian',
+  dorian: 'dorian',
+  'melodic minor': 'melodicMinor',
+  'harmonic minor': 'harmonicMinor',
+  mixolydian: 'mixolydian',
+};
+
 function buildEmptyProgression(barCount: number): HarmonyCell[] {
   const totalCells = barCount * CELLS_PER_BAR;
   return Array.from({ length: totalCells }, (_, index) => ({
@@ -81,6 +92,7 @@ export default function ChordsPage() {
   const [reverbAmount, setReverbAmountState] = useState(DEFAULT_REVERB);
   const [toneAmount, setToneAmountState] = useState(DEFAULT_TONE);
   const [tapeAmount, setTapeAmountState] = useState(DEFAULT_TAPE);
+  const [scalePositionIndex, setScalePositionIndex] = useState(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -213,6 +225,32 @@ export default function ChordsPage() {
     }
     return getVoicingsForSymbol(selectedCell.symbol);
   }, [selectedCell]);
+
+  const scaleDef = useMemo(() => getScaleById(MODE_TO_SCALE_ID[mode] ?? 'minorPentatonic'), [mode]);
+  const scalePositions = useMemo(
+    () => buildPositions({ key: keyName, scale: scaleDef, tuningMidi }),
+    [keyName, scaleDef],
+  );
+
+  useEffect(() => {
+    if (scalePositionIndex >= scalePositions.length) {
+      setScalePositionIndex(0);
+    }
+  }, [scalePositions.length, scalePositionIndex]);
+
+  const activeScalePosition = scalePositions[scalePositionIndex];
+
+  const scaleMarkers = useMemo(
+    () =>
+      buildNeckMarkers({
+        key: keyName,
+        scale: scaleDef,
+        tuning: STANDARD_TUNING,
+        highlighted: activeScalePosition?.idSet,
+      }),
+    [keyName, scaleDef, activeScalePosition],
+  );
+  const scaleHighlightIds = activeScalePosition?.idSet ?? new Set<string>();
 
   const handleSelectCell = (index: number) => {
     setSelectedIndex(index);
@@ -450,27 +488,35 @@ export default function ChordsPage() {
         </section>
 
         <section className="chords-lower-grid">
-          <div className="voicing-summary">
-            <div className="voicing-summary__meta">
-              <p className="eyebrow">Selected Cell</p>
-              <h3>
-                {selectedCell?.roman} · {selectedCell?.symbol}
-              </h3>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedCell?.voicing) {
-                    playChord(selectedCell.voicing, { mode: arpeggioMode });
-                  }
-                }}
-              >
-                Play chord
-              </button>
+          <div className="scale-pane">
+            <div className="scale-pane__header">
+              <div>
+                <p className="eyebrow">Solo Scale</p>
+                <h3>
+                  {keyName} · {scaleDef.name}
+                </h3>
+              </div>
+              <div className="scale-position-toggle">
+                {scalePositions.length ? (
+                  scalePositions.map((_, index) => (
+                    <button
+                      type="button"
+                      key={`scale-pos-${index}`}
+                      className={index === scalePositionIndex ? 'active' : ''}
+                      onClick={() => setScalePositionIndex(index)}
+                    >
+                      {index + 1}
+                    </button>
+                  ))
+                ) : (
+                  <span className="muted">No positions</span>
+                )}
+              </div>
             </div>
-            <div className="voicing-summary__diagram">
-              <ChordDiagram voicing={selectedCell?.voicing} />
+            <div className="scale-pane__board">
+              <FretboardView markers={scaleMarkers} highlightIds={scaleHighlightIds} tuning={STANDARD_TUNING} />
             </div>
-        </div>
+          </div>
         <div className="voicing-options">
           <nav className="voicing-tabs">
             <button type="button" className={panelTab === 'voicings' ? 'active' : ''} onClick={() => setPanelTab('voicings')}>
