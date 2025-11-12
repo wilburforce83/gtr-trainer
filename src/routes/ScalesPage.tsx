@@ -17,7 +17,7 @@ import {
   type ScaleDef,
 } from '../scales';
 import { Note } from '@tonaljs/tonal';
-import { playSequence, setBpm, stopAll, primeAudioUnlock, setGlobalVolume } from '../lib/audio';
+import { playSequence, setBpm, stopAll, primeAudioUnlock } from '../lib/audio';
 import type { NoteMarker } from '../lib/neck';
 import type { SequenceToken } from '../lib/sequencing';
 
@@ -33,7 +33,6 @@ function ScalesPage() {
   const [positionIndex, setPositionIndex] = useState(0);
   const [bpm, setBpmValue] = useState(70);
   const [loop, setLoop] = useState(false);
-  const [masterVolume, setMasterVolume] = useState(0.85);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const fretboardRef = useRef<HTMLDivElement>(null);
@@ -86,13 +85,9 @@ function ScalesPage() {
       return;
     }
     await setBpm(bpm);
-    await playSequence(sequence, { loop, countIn: 4, masterVolume });
+    await playSequence(sequence, { loop, countIn: 4 });
     setIsPlaying(true);
   };
-
-  useEffect(() => {
-    setGlobalVolume(masterVolume);
-  }, [masterVolume]);
 
   const handleStop = () => {
     stopAll();
@@ -155,8 +150,6 @@ function ScalesPage() {
         isPlaying={isPlaying}
         loop={loop}
         onLoopToggle={setLoop}
-        volume={masterVolume}
-        onVolumeChange={setMasterVolume}
         onRelativeToggle={handleFlipRelative}
         canFlipRelative={Boolean(scaleDef.relativeScaleId)}
       />

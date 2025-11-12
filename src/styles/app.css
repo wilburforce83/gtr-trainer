@@ -189,6 +189,10 @@ body {
   flex-direction: column;
   gap: 1.25rem;
   overflow: hidden;
+  background-image: linear-gradient(rgba(2, 6, 23, 0.92), rgba(2, 6, 23, 0.92)), url('/images/background.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
 }
 
 .chords-main {
@@ -709,6 +713,10 @@ body {
   gap: 1rem;
   padding: clamp(1rem, 3vw, 2.5rem);
   overflow: hidden;
+  background-image: linear-gradient(rgba(2, 6, 23, 0.92), rgba(2, 6, 23, 0.92)), url('/images/background.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
 }
 
 .controls {
@@ -790,18 +798,6 @@ button:disabled {
   display: flex;
   gap: 0.35rem;
   align-items: center;
-}
-
-.slider {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.75rem;
-  color: #cbd5f5;
-}
-
-.slider input {
-  width: 120px;
 }
 
 .position-radios {
