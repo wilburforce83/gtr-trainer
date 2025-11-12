@@ -7,9 +7,7 @@ type Props = {
   selectedIndex: number | null;
   onSelect(index: number): void;
   onToggleLock(index: number): void;
-  onReplace(index: number): void;
   onReharmonize(index: number): void;
-  onDuplicate(index: number): void;
   onDelete(index: number): void;
   onMove(fromIndex: number, toIndex: number): void;
 };
@@ -20,9 +18,7 @@ export default function ProgressionEditor({
   selectedIndex,
   onSelect,
   onToggleLock,
-  onReplace,
   onReharmonize,
-  onDuplicate,
   onDelete,
   onMove,
 }: Props) {
@@ -115,14 +111,8 @@ export default function ProgressionEditor({
                     event.stopPropagation();
                   }}
                 >
-                  <button type="button" onClick={() => onReplace(cell.index)}>
-                    Replace
-                  </button>
                   <button type="button" onClick={() => onReharmonize(cell.index)}>
                     Reharmonize
-                  </button>
-                  <button type="button" onClick={() => onDuplicate(cell.index)}>
-                    Duplicate
                   </button>
                   <button type="button" onClick={() => onDelete(cell.index)}>
                     Delete

@@ -5,7 +5,6 @@ import ProgressionEditor from '../components/ProgressionEditor';
 import ChordDiagram from '../components/ChordDiagram';
 import ChordList from '../components/ChordList';
 import Transport from '../components/Transport';
-import ExportBar from '../components/ExportBar';
 import {
   generateProgression,
   reharmonizeCell as reharmonizeHarmonyCell,
@@ -243,39 +242,6 @@ export default function ChordsPage() {
     );
   };
 
-  const handleReplace = (index: number) => {
-    const lockedMap = Object.fromEntries(cells.filter((cell) => cell.index !== index).map((cell) => [cell.index, cell]));
-    const next = generateProgression({
-      key: keyName,
-      mode,
-      style,
-      bars,
-      resolution: RESOLUTION,
-      lockedMap,
-    });
-    setCells(applyVoicings(next));
-  };
-
-  const handleDuplicate = (index: number) => {
-    setCells((prev) => {
-      const snapshot = prev.map((cell) => ({ ...cell }));
-      const target = snapshot.find((cell) => cell.index === index);
-      if (!target) {
-        return prev;
-      }
-      const nextIndex = index + 1;
-      if (nextIndex >= snapshot.length) {
-        return prev;
-      }
-      snapshot[nextIndex] = {
-        ...target,
-        index: nextIndex,
-        locked: false,
-      };
-      return applyVoicings(snapshot);
-    });
-  };
-
   const handleDelete = (index: number) => {
     setCells((prev) =>
       prev.map((cell) => (cell.index === index ? { ...cell, roman: '—', symbol: 'Rest', voicing: undefined, locked: false } : cell)),
@@ -398,79 +364,98 @@ export default function ChordsPage() {
       </header>
 
       <section className="chords-controls">
-        <label>
-          Key
-          <select value={keyName} onChange={(event) => setKeyName(event.target.value)}>
-            {KEY_OPTIONS.map((key) => (
-              <option key={key} value={key}>
-                {key}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Mode
-          <select value={mode} onChange={(event) => setMode(event.target.value as ModeName)}>
-            {MODE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Style
-          <select value={style} onChange={(event) => setStyle(event.target.value as StyleName)}>
-            {STYLE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="control-buttons">
-          <button type="button" className="primary" onClick={() => handleGenerate(true)}>
-            Generate
-          </button>
-          <button type="button" onClick={handleClear}>
-            Clear
-          </button>
-          <button type="button" onClick={handleHumanize}>
-            Humanize
-          </button>
-          <button type="button" onClick={handleQuantize}>
-            Quantize
-          </button>
+        <div className="controls-left">
+          <label>
+            Key
+            <select value={keyName} onChange={(event) => setKeyName(event.target.value)}>
+              {KEY_OPTIONS.map((key) => (
+                <option key={key} value={key}>
+                  {key}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Mode
+            <select value={mode} onChange={(event) => setMode(event.target.value as ModeName)}>
+              {MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Style
+            <select value={style} onChange={(event) => setStyle(event.target.value as StyleName)}>
+              {STYLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="controls-right">
+          <div className="control-buttons primary-actions">
+            <button type="button" className="primary" onClick={() => handleGenerate(true)}>
+              Generate
+            </button>
+            <button type="button" onClick={handleClear}>
+              Clear
+            </button>
+            <button type="button" onClick={handleHumanize}>
+              Humanize
+            </button>
+            <button type="button" onClick={handleQuantize}>
+              Quantize
+            </button>
+          </div>
+          <div className="control-buttons export-actions">
+            <span className="export-label">Export</span>
+            <button
+              type="button"
+              onClick={() =>
+                exportProgressionJson({
+                  key: keyName,
+                  mode,
+                  style,
+                  bpm,
+                  cells,
+                })
+              }
+            >
+              JSON
+            </button>
+            <button type="button" onClick={() => exportProgressionMidi(cells, bpm)}>MIDI</button>
+            <button type="button" onClick={() => exportProgressionPng(cells)}>PNG</button>
+          </div>
         </div>
       </section>
 
       <div className="chords-main">
         <section className="chords-workspace">
           <div className="progression-pane">
-            <ProgressionEditor
-              cells={cells}
-              bars={bars}
-              selectedIndex={selectedIndex}
-              onSelect={handleSelectCell}
-              onToggleLock={handleToggleLock}
-              onReplace={handleReplace}
-              onReharmonize={handleReharmonize}
-              onDuplicate={handleDuplicate}
-              onDelete={handleDelete}
-              onMove={handleMoveCell}
-            />
+          <ProgressionEditor
+            cells={cells}
+            bars={bars}
+            selectedIndex={selectedIndex}
+            onSelect={handleSelectCell}
+            onToggleLock={handleToggleLock}
+            onReharmonize={handleReharmonize}
+            onDelete={handleDelete}
+            onMove={handleMoveCell}
+          />
           </div>
         </section>
 
         <section className="chords-lower-grid">
           <div className="voicing-summary">
-            <div className="voicing-header">
-              <div>
-                <p className="eyebrow">Selected Cell</p>
-                <h3>
-                  {selectedCell?.roman} · {selectedCell?.symbol}
-                </h3>
-              </div>
+            <div className="voicing-summary__meta">
+              <p className="eyebrow">Selected Cell</p>
+              <h3>
+                {selectedCell?.roman} · {selectedCell?.symbol}
+              </h3>
               <button
                 type="button"
                 onClick={() => {
@@ -482,12 +467,14 @@ export default function ChordsPage() {
                 Play chord
               </button>
             </div>
-            <ChordDiagram voicing={selectedCell?.voicing} />
-          </div>
-          <div className="voicing-options">
-            <nav className="voicing-tabs">
-              <button type="button" className={panelTab === 'voicings' ? 'active' : ''} onClick={() => setPanelTab('voicings')}>
-                Voicings
+            <div className="voicing-summary__diagram">
+              <ChordDiagram voicing={selectedCell?.voicing} />
+            </div>
+        </div>
+        <div className="voicing-options">
+          <nav className="voicing-tabs">
+            <button type="button" className={panelTab === 'voicings' ? 'active' : ''} onClick={() => setPanelTab('voicings')}>
+              Voicings
               </button>
               <button type="button" className={panelTab === 'alt' ? 'active' : ''} onClick={() => setPanelTab('alt')}>
                 Alt Chords
@@ -496,16 +483,14 @@ export default function ChordsPage() {
                 Info
               </button>
             </nav>
-            {panelTab === 'voicings' && (
-              <ChordList
-                voicings={voicingOptions}
-                selectedId={selectedCell?.voicing?.id}
-                arpeggioMode={arpeggioMode}
-                onModeChange={setArpeggioMode}
-                onSelect={handleSelectVoicing}
-                onPlay={(voicing) => playChord(voicing, { mode: arpeggioMode })}
-              />
-            )}
+          {panelTab === 'voicings' && (
+            <ChordList
+              voicings={voicingOptions}
+              selectedId={selectedCell?.voicing?.id}
+              onSelect={handleSelectVoicing}
+              onPlay={(voicing) => playChord(voicing, { mode: arpeggioMode })}
+            />
+          )}
             {panelTab === 'alt' && (
               <div className="alt-chord-list">
                 {altChords.map((option) => (
@@ -553,21 +538,6 @@ export default function ChordsPage() {
           </div>
         </section>
 
-        <section className="chords-footer">
-          <ExportBar
-            onExportJSON={() =>
-              exportProgressionJson({
-                key: keyName,
-                mode,
-                style,
-                bpm,
-                cells,
-              })
-            }
-            onExportMIDI={() => exportProgressionMidi(cells, bpm)}
-            onExportPNG={() => exportProgressionPng(cells)}
-          />
-        </section>
       </div>
     </div>
   );

@@ -42,12 +42,20 @@ export function renderChordDiagram(container: HTMLElement, voicing: Voicing): vo
       titleColor: PALETTE.accent,
       nutColor: PALETTE.accent,
       fretLabelColor: PALETTE.text,
-      strokeWidth: 3,
+      strokeWidth: 1.2,
+      fretLabelFontSize: 72,
+      tuningsFontSize: 40,
+      nutTextSize: 30,
+      titleFontSize: 56,
+      titleBottomMargin: 0,
+      emptyStringIndicatorSize: 0.5,
+      nutSize: 0.55,
+      title: '',
+      fixedDiagramPosition: true,
     })
     .chord({
       fingers,
       barres,
-      title: `${voicing.root}${voicing.chordKind}`,
     })
     .draw();
 }
