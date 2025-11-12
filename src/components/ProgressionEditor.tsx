@@ -11,6 +11,7 @@ type Props = {
   onReharmonize(index: number): void;
   onDuplicate(index: number): void;
   onDelete(index: number): void;
+  onMove(fromIndex: number, toIndex: number): void;
 };
 
 export default function ProgressionEditor({
@@ -23,8 +24,10 @@ export default function ProgressionEditor({
   onReharmonize,
   onDuplicate,
   onDelete,
+  onMove,
 }: Props) {
   const [menuIndex, setMenuIndex] = useState<number | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (menuIndex === null) {
@@ -50,12 +53,32 @@ export default function ProgressionEditor({
               className={`progression-cell${isSelected ? ' selected' : ''}${cell.locked ? ' locked' : ''}`}
               role="button"
               tabIndex={0}
+              draggable
               onClick={() => onSelect(cell.index)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
                   onSelect(cell.index);
                 }
+              }}
+              onDragStart={(event) => {
+                event.dataTransfer.setData('text/plain', String(cell.index));
+                event.dataTransfer.effectAllowed = 'move';
+                setDragIndex(cell.index);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (dragIndex !== null && dragIndex !== cell.index) {
+                  onMove(dragIndex, cell.index);
+                }
+                setDragIndex(null);
+              }}
+              onDragEnd={() => {
+                setDragIndex(null);
               }}
             >
               <header>

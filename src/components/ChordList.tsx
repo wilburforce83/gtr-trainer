@@ -4,28 +4,25 @@ import ChordDiagram from './ChordDiagram';
 type Props = {
   voicings: Voicing[];
   selectedId?: string;
-  arpeggiate: boolean;
-  onToggleArpeggiate(value: boolean): void;
+  arpeggioMode: 'arpeggio' | 'strum' | 'picked';
   onSelect(voicing: Voicing): void;
   onPlay(voicing: Voicing): void;
+  onModeChange(mode: 'arpeggio' | 'strum' | 'picked'): void;
 };
 
-export default function ChordList({
-  voicings,
-  selectedId,
-  arpeggiate,
-  onToggleArpeggiate,
-  onSelect,
-  onPlay,
-}: Props) {
+export default function ChordList({ voicings, selectedId, arpeggioMode, onSelect, onPlay, onModeChange }: Props) {
   return (
     <div className="chord-list">
       <header>
         <span>Voicings</span>
-        <label className="toggle">
-          <input type="checkbox" checked={arpeggiate} onChange={(event) => onToggleArpeggiate(event.target.checked)} />
-          {arpeggiate ? 'Arpeggiate' : 'Strum'}
-        </label>
+        <div className="mode-toggle">
+          {['arpeggio', 'strum', 'picked'].map((mode) => (
+            <label key={mode} className="radio">
+              <input type="radio" checked={arpeggioMode === mode} onChange={() => onModeChange(mode as any)} />
+              {mode}
+            </label>
+          ))}
+        </div>
       </header>
       <div className="chord-list__grid">
         {voicings.map((voicing) => (

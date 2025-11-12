@@ -20,6 +20,10 @@ import {
   setTransportBpm,
   setMetronomeEnabled,
   primeChordAudioUnlock,
+  setReverbAmount as applyReverbAmount,
+  setToneAmount as applyToneAmount,
+  setTapeAmount as applyTapeAmount,
+  DEFAULT_EFFECT_SETTINGS,
 } from '../chords/audio';
 import { STANDARD_TUNING, tuningToMidi } from '../lib/neck';
 import { renderChordDiagram } from '../chords/svguitar';
@@ -41,25 +45,43 @@ const STYLE_OPTIONS: Array<{ value: StyleName; label: string }> = [
   { value: 'pop', label: 'Pop' },
   { value: 'blues', label: 'Blues' },
 ];
-const BAR_OPTIONS = [4, 8, 12, 16];
 
 type PanelTab = 'voicings' | 'alt' | 'info';
 
 const tuningMidi = tuningToMidi(STANDARD_TUNING);
+const CELLS_PER_BAR = 2;
+const { reverb: DEFAULT_REVERB, tone: DEFAULT_TONE, tape: DEFAULT_TAPE } = DEFAULT_EFFECT_SETTINGS;
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+const readEffectValue = (value: unknown, fallback: number) => (typeof value === 'number' ? clamp01(value) : fallback);
+
+function buildEmptyProgression(barCount: number): HarmonyCell[] {
+  const totalCells = barCount * CELLS_PER_BAR;
+  return Array.from({ length: totalCells }, (_, index) => ({
+    index,
+    roman: '—',
+    symbol: 'Rest',
+    func: 'T',
+    locked: false,
+  }));
+}
 
 export default function ChordsPage() {
   const [keyName, setKeyName] = useState('C');
   const [mode, setMode] = useState<ModeName>('ionian');
   const [style, setStyle] = useState<StyleName>('neo-soul');
-  const [bars, setBars] = useState(8);
+  const bars = 4;
   const [cells, setCells] = useState<HarmonyCell[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [bpm, setBpm] = useState(84);
   const [loop, setLoop] = useState(false);
   const [metronome, setMetronome] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [arpeggiate, setArpeggiate] = useState(false);
+  const [arpeggioMode, setArpeggioMode] = useState<'arpeggio' | 'strum' | 'picked'>('arpeggio');
   const [panelTab, setPanelTab] = useState<PanelTab>('voicings');
+  const [reverbAmount, setReverbAmountState] = useState(DEFAULT_REVERB);
+  const [toneAmount, setToneAmountState] = useState(DEFAULT_TONE);
+  const [tapeAmount, setTapeAmountState] = useState(DEFAULT_TAPE);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -74,10 +96,13 @@ export default function ChordsPage() {
       setKeyName(parsed.keyName ?? 'C');
       setMode(parsed.mode ?? 'ionian');
       setStyle(parsed.style ?? 'neo-soul');
-      setBars(parsed.bars ?? 8);
       setBpm(parsed.bpm ?? 84);
       setLoop(parsed.loop ?? false);
       setMetronome(parsed.metronome ?? false);
+      const effects = parsed.effects ?? {};
+      setReverbAmountState(readEffectValue(effects.reverb, DEFAULT_REVERB));
+      setToneAmountState(readEffectValue(effects.tone, DEFAULT_TONE));
+      setTapeAmountState(readEffectValue(effects.tape, DEFAULT_TAPE));
       if (Array.isArray(parsed.cells)) {
         setCells(parsed.cells);
       }
@@ -99,9 +124,14 @@ export default function ChordsPage() {
       loop,
       metronome,
       cells,
+      effects: {
+        reverb: reverbAmount,
+        tone: toneAmount,
+        tape: tapeAmount,
+      },
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [keyName, mode, style, bars, bpm, loop, metronome, cells]);
+  }, [keyName, mode, style, bars, bpm, loop, metronome, cells, reverbAmount, toneAmount, tapeAmount]);
 
   const applyVoicings = useCallback((draft: HarmonyCell[]): HarmonyCell[] => {
     let prev: Voicing | undefined;
@@ -165,6 +195,18 @@ export default function ChordsPage() {
     primeChordAudioUnlock();
   }, []);
 
+  useEffect(() => {
+    applyReverbAmount(reverbAmount);
+  }, [reverbAmount]);
+
+  useEffect(() => {
+    applyToneAmount(toneAmount);
+  }, [toneAmount]);
+
+  useEffect(() => {
+    applyTapeAmount(tapeAmount);
+  }, [tapeAmount]);
+
   const selectedCell = cells.find((cell) => cell.index === selectedIndex) ?? cells[0];
   const voicingOptions = useMemo(() => {
     if (!selectedCell) {
@@ -177,7 +219,7 @@ export default function ChordsPage() {
     setSelectedIndex(index);
     const cell = cells.find((candidate) => candidate.index === index);
     if (cell?.voicing) {
-      playChord(cell.voicing, { arpeggiate });
+      playChord(cell.voicing, { mode: arpeggioMode });
     }
   };
 
@@ -245,7 +287,7 @@ export default function ChordsPage() {
       prev.map((cell) => (cell.index === selectedCell?.index ? { ...cell, voicing } : cell)),
     );
     if (selectedCell) {
-      playChord(voicing, { arpeggiate });
+      playChord(voicing, { mode: arpeggioMode });
     }
   };
 
@@ -268,11 +310,44 @@ export default function ChordsPage() {
     setCells((prev) => quantizeProgression(prev));
   };
 
+  const handleMoveCell = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) {
+      return;
+    }
+    setCells((prev) => {
+      const next = [...prev];
+      const fromPos = next.findIndex((cell) => cell.index === fromIndex);
+      const toPos = next.findIndex((cell) => cell.index === toIndex);
+      if (fromPos === -1 || toPos === -1) {
+        return prev;
+      }
+      const [moved] = next.splice(fromPos, 1);
+      next.splice(toPos, 0, moved);
+      return next.map((cell, idx) => ({ ...cell, index: idx }));
+    });
+    setSelectedIndex((current) => {
+      if (current === null) {
+        return current;
+      }
+      if (current === fromIndex) {
+        return toIndex;
+      }
+      if (fromIndex < current && current <= toIndex) {
+        return current - 1;
+      }
+      if (toIndex <= current && current < fromIndex) {
+        return current + 1;
+      }
+      return current;
+    });
+  };
+
   const handleClear = () => {
     stopPlayback();
     setIsPlaying(false);
-    setCells([]);
-    setSelectedIndex(null);
+    const empty = buildEmptyProgression(bars);
+    setCells(empty);
+    setSelectedIndex(empty[0]?.index ?? null);
   };
 
   const handlePlay = async () => {
@@ -284,7 +359,7 @@ export default function ChordsPage() {
     if (!tempoReady || !metroReady) {
       return;
     }
-    const started = await playProgression(cells, loop);
+    const started = await playProgression(cells, loop, { mode: arpeggioMode });
     setIsPlaying(started);
   };
 
@@ -298,15 +373,27 @@ export default function ChordsPage() {
     await setMetronomeEnabled(value);
   };
 
+  const handleReverbChange = (value: number) => {
+    setReverbAmountState(clamp01(value));
+  };
+
+  const handleToneChange = (value: number) => {
+    setToneAmountState(clamp01(value));
+  };
+
+  const handleTapeChange = (value: number) => {
+    setTapeAmountState(clamp01(value));
+  };
+
   const altChords = selectedCell ? buildAltChords(selectedCell.symbol) : [];
 
   return (
     <div className="chords-shell">
       <header className="page-header">
         <BackButton />
-        <div>
+        <div className="page-heading">
           <p className="eyebrow">Chord Progressions</p>
-          <h1>Generate genre-aware progressions with adaptive voicings.</h1>
+          <p className="page-title">Generate genre-aware progressions with adaptive voicings.</p>
         </div>
       </header>
 
@@ -341,16 +428,6 @@ export default function ChordsPage() {
             ))}
           </select>
         </label>
-        <label>
-          Bars
-          <select value={bars} onChange={(event) => setBars(Number(event.target.value))}>
-            {BAR_OPTIONS.map((count) => (
-              <option key={count} value={count}>
-                {count}
-              </option>
-            ))}
-          </select>
-        </label>
         <div className="control-buttons">
           <button type="button" className="primary" onClick={() => handleGenerate(true)}>
             Generate
@@ -379,9 +456,13 @@ export default function ChordsPage() {
             onReharmonize={handleReharmonize}
             onDuplicate={handleDuplicate}
             onDelete={handleDelete}
+            onMove={handleMoveCell}
           />
         </div>
-        <aside className="voicing-pane">
+      </section>
+
+      <section className="chords-lower-grid">
+        <div className="voicing-summary">
           <div className="voicing-header">
             <div>
               <p className="eyebrow">Selected Cell</p>
@@ -393,7 +474,7 @@ export default function ChordsPage() {
               type="button"
               onClick={() => {
                 if (selectedCell?.voicing) {
-                  playChord(selectedCell.voicing, { arpeggiate });
+                  playChord(selectedCell.voicing, { mode: arpeggioMode });
                 }
               }}
             >
@@ -401,6 +482,8 @@ export default function ChordsPage() {
             </button>
           </div>
           <ChordDiagram voicing={selectedCell?.voicing} />
+        </div>
+        <div className="voicing-options">
           <nav className="voicing-tabs">
             <button type="button" className={panelTab === 'voicings' ? 'active' : ''} onClick={() => setPanelTab('voicings')}>
               Voicings
@@ -416,10 +499,10 @@ export default function ChordsPage() {
             <ChordList
               voicings={voicingOptions}
               selectedId={selectedCell?.voicing?.id}
-              arpeggiate={arpeggiate}
-              onToggleArpeggiate={setArpeggiate}
+              arpeggioMode={arpeggioMode}
+              onModeChange={setArpeggioMode}
               onSelect={handleSelectVoicing}
-              onPlay={(voicing) => playChord(voicing, { arpeggiate })}
+              onPlay={(voicing) => playChord(voicing, { mode: arpeggioMode })}
             />
           )}
           {panelTab === 'alt' && (
@@ -445,21 +528,31 @@ export default function ChordsPage() {
               </li>
             </ul>
           )}
-        </aside>
+        </div>
+        <div className="transport-pane">
+          <Transport
+            bpm={bpm}
+            loop={loop}
+            metronome={metronome}
+            isPlaying={isPlaying}
+            onBpmChange={setBpm}
+            onPlay={handlePlay}
+            onStop={handleStop}
+            onToggleLoop={setLoop}
+            onToggleMetronome={handleToggleMetronome}
+            mode={arpeggioMode}
+            onModeChange={setArpeggioMode}
+            reverb={reverbAmount}
+            tone={toneAmount}
+            tape={tapeAmount}
+            onReverbChange={handleReverbChange}
+            onToneChange={handleToneChange}
+            onTapeChange={handleTapeChange}
+          />
+        </div>
       </section>
 
       <section className="chords-footer">
-        <Transport
-          bpm={bpm}
-          loop={loop}
-          metronome={metronome}
-          isPlaying={isPlaying}
-          onBpmChange={setBpm}
-          onPlay={handlePlay}
-          onStop={handleStop}
-          onToggleLoop={setLoop}
-          onToggleMetronome={handleToggleMetronome}
-        />
         <ExportBar
           onExportJSON={() =>
             exportProgressionJson({

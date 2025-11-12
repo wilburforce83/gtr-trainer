@@ -1,44 +1,54 @@
 import * as Tone from 'tone';
-import { Chord, Note } from '@tonaljs/tonal';
+import { Chord } from '@tonaljs/tonal';
 import type { HarmonyCell } from './types';
 import type { Voicing } from './voicings';
 import { STANDARD_TUNING, tuningToMidi } from '../lib/neck';
+import { getSampler, midiToNoteName, primeSamplerUnlock } from '../lib/samplePlayer';
+
+export {
+  DEFAULT_EFFECT_SETTINGS,
+  setReverbAmount,
+  setTapeAmount,
+  setToneAmount,
+} from '../lib/samplePlayer';
+export type { EffectSettings } from '../lib/samplePlayer';
+
+type StrumMode = 'arpeggio' | 'strum' | 'picked';
 
 type PlayOptions = {
-  arpeggiate?: boolean;
-  msBetween?: number;
+  mode?: StrumMode;
 };
 
 const tuningMidi = tuningToMidi(STANDARD_TUNING);
-let synth: Tone.PolySynth<Tone.Synth> | null = null;
 let metronome: Tone.MembraneSynth | null = null;
 let metronomeLoop: Tone.Loop | null = null;
-let toneReady = false;
 let unlockRegistered = false;
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined';
 }
 
-async function ensureTone(): Promise<void> {
+async function ensureSamplerReady(): Promise<Tone.Sampler | null> {
   if (!isBrowser()) {
-    throw new Error('Not in browser');
+    return null;
   }
-  if (!toneReady) {
-    await Tone.start();
-    toneReady = true;
+  try {
+    const sampler = await getSampler();
+    return sampler;
+  } catch {
+    return null;
   }
-  ensureSynth();
 }
 
 export function primeChordAudioUnlock(): void {
-  if (!isBrowser() || toneReady || unlockRegistered) {
+  if (!isBrowser() || unlockRegistered) {
     return;
   }
+  primeSamplerUnlock();
   unlockRegistered = true;
   const unlock = async () => {
     try {
-      await ensureTone();
+      await Tone.start();
     } catch {
       unlockRegistered = false;
       return;
@@ -51,37 +61,37 @@ export function primeChordAudioUnlock(): void {
 }
 
 export async function primeAudio(): Promise<boolean> {
-  try {
-    await ensureTone();
-    return true;
-  } catch {
+  const sampler = await ensureSamplerReady();
+  if (!sampler) {
     primeChordAudioUnlock();
     return false;
   }
+  return true;
 }
 
 export async function playChord(voicing: Voicing, options: PlayOptions = {}): Promise<void> {
   const ready = await primeAudio();
+  const sampler = await ensureSamplerReady();
   const notes = voicingToNotes(voicing);
-  if (!ready || !notes.length || !synth) {
+  if (!ready || !notes.length || !sampler) {
     return;
   }
   const now = Tone.now();
-  const { arpeggiate = false, msBetween = 80 } = options;
-  if (arpeggiate) {
-    notes.forEach((note, idx) => {
-      synth!.triggerAttackRelease(note, '8n', now + (msBetween / 1000) * idx);
-    });
-    return;
-  }
-  synth.triggerAttackRelease(notes, '2n', now);
+  const mode = options.mode ?? 'arpeggio';
+  triggerNotesWithMode(sampler, notes, now, mode);
 }
 
-export async function playProgression(cells: HarmonyCell[], loop: boolean): Promise<boolean> {
+export async function playProgression(
+  cells: HarmonyCell[],
+  loop: boolean,
+  options: PlayOptions = {},
+): Promise<boolean> {
   const ready = await primeAudio();
-  if (!ready || !synth) {
+  const sampler = await ensureSamplerReady();
+  if (!ready || !sampler) {
     return false;
   }
+  const mode = options.mode ?? 'arpeggio';
   Tone.Transport.stop();
   Tone.Transport.cancel();
   Tone.Transport.loop = loop;
@@ -93,12 +103,11 @@ export async function playProgression(cells: HarmonyCell[], loop: boolean): Prom
     Tone.Transport.schedule((time) => {
       const voicing = cell.voicing;
       if (voicing) {
-        triggerVoicing(voicing, time);
+        const notes = voicingToNotes(voicing);
+        triggerNotesWithMode(sampler, notes, time, mode);
       } else {
         const notes = chordSymbolToNotes(cell.symbol);
-        if (notes.length) {
-          synth!.triggerAttackRelease(notes, '2n', time);
-        }
+        triggerNotesWithMode(sampler, notes, time, mode);
       }
     }, position);
   });
@@ -150,24 +159,21 @@ export async function setMetronomeEnabled(enabled: boolean): Promise<boolean> {
   return true;
 }
 
-function ensureSynth() {
-  if (!synth) {
-    synth = new Tone.PolySynth(Tone.Synth).toDestination();
-    synth.set({
-      volume: -8,
-    });
-  }
-}
-
-function triggerVoicing(voicing: Voicing, time: number) {
-  if (!synth) {
-    return;
-  }
-  const notes = voicingToNotes(voicing);
+function triggerNotesWithMode(sampler: Tone.Sampler, notes: string[], time: number, mode: StrumMode) {
   if (!notes.length) {
     return;
   }
-  synth.triggerAttackRelease(notes, '2n', time);
+  if (mode === 'arpeggio') {
+    notes.forEach((note, idx) => {
+      sampler.triggerAttackRelease(note, '2n', time + idx * 0.08);
+    });
+    return;
+  }
+  if (mode === 'picked') {
+    triggerPickingPattern(sampler, notes, time);
+    return;
+  }
+  sampler.triggerAttackRelease(notes, '1m', time);
 }
 
 function voicingToNotes(voicing: Voicing): string[] {
@@ -175,7 +181,7 @@ function voicingToNotes(voicing: Voicing): string[] {
     .filter((entry) => entry.fret >= 0)
     .map((entry) => {
       const midi = tuningMidi[entry.str - 1] + entry.fret;
-      return Note.fromMidi(midi);
+      return midiToNoteName(midi);
     })
     .filter((note): note is string => Boolean(note));
 }
@@ -187,6 +193,55 @@ function chordSymbolToNotes(symbol: string): string[] {
   }
   const octaves = [3, 3, 4, 4, 5];
   return chord.notes.map((note, idx) => `${note}${octaves[idx % octaves.length]}`);
+}
+
+function triggerPickingPattern(sampler: Tone.Sampler, notes: string[], startTime: number) {
+  const sequence = buildPickingSequence(notes, 4);
+  if (!sequence.length) {
+    return;
+  }
+  const stepDuration = Tone.Time('8n').toSeconds();
+  sequence.forEach((note, step) => {
+    sampler.triggerAttackRelease(note, '8n', startTime + step * stepDuration);
+  });
+}
+
+function buildPickingSequence(notes: string[], length = 4): string[] {
+  if (!notes.length) {
+    return [];
+  }
+  const sorted = sortNotesAscending(notes);
+  const sequence: string[] = [];
+  if (sorted.length === 1) {
+    return Array.from({ length }, () => sorted[0]);
+  }
+  if (sorted.length === 2) {
+    while (sequence.length < length) {
+      sequence.push(sorted[0], sorted[1]);
+    }
+    return sequence.slice(0, length);
+  }
+  const lowest = sorted[0];
+  const highest = sorted[sorted.length - 1];
+  const mid = sorted[Math.floor(sorted.length / 2)];
+  const secondLowest = sorted[1];
+  const pattern = [lowest, highest, mid, highest, secondLowest];
+  while (sequence.length < length) {
+    sequence.push(pattern[sequence.length % pattern.length]);
+  }
+  return sequence.slice(0, length);
+}
+
+function sortNotesAscending(notes: string[]): string[] {
+  return [...notes].sort((a, b) => noteToMidi(a) - noteToMidi(b));
+}
+
+function noteToMidi(note: string): number {
+  try {
+    return Tone.Frequency(note).toMidi();
+  } catch {
+    return 0;
+  }
 }
 
 function cellIndexToPosition(index: number): string {

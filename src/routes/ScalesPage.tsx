@@ -129,9 +129,9 @@ function ScalesPage() {
     <div className="app-shell">
       <header className="page-header">
         <BackButton />
-        <div>
+        <div className="page-heading">
           <p className="eyebrow">Scales Trainer</p>
-          <h1>Visualize every position across the neck.</h1>
+          <p className="page-title">Visualize every position across the neck.</p>
         </div>
       </header>
 

@@ -1,17 +1,15 @@
 import * as Tone from 'tone';
 import type { SequenceToken } from './sequencing';
 import { emitNotePlay } from './noteEvents';
+import { getSampler, midiToNoteName, primeSamplerUnlock, setSamplerVolume } from './samplePlayer';
 
 export type VoicingPosition = {
   string: number;
   fret: number;
 };
 
-let synth: Tone.PolySynth | null = null;
 let clickSynth: Tone.Synth | null = null;
 let sequencePart: Tone.Part | null = null;
-let toneReady = false;
-let unlockRegistered = false;
 let masterVolume = 0.6;
 
 function isBrowser(): boolean {
@@ -19,52 +17,47 @@ function isBrowser(): boolean {
 }
 
 export function primeAudioUnlock(): void {
-  if (!isBrowser() || toneReady || unlockRegistered) {
+  if (!isBrowser()) {
     return;
   }
-  unlockRegistered = true;
-  const unlock = async () => {
-    try {
-      await Tone.start();
-      toneReady = true;
-    } catch {
-      unlockRegistered = false;
-      return;
-    }
-    window.removeEventListener('pointerdown', unlock);
-    window.removeEventListener('keydown', unlock);
-  };
-  window.addEventListener('pointerdown', unlock);
-  window.addEventListener('keydown', unlock);
+  primeSamplerUnlock();
+  if (!clickSynth) {
+    const unlock = async () => {
+      try {
+        await Tone.start();
+      } catch {
+        return;
+      }
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+  }
 }
 
-async function ensureAudio(): Promise<boolean> {
+async function ensureAudio(): Promise<{ sampler: Tone.Sampler } | null> {
   if (!isBrowser()) {
-    return false;
+    return null;
   }
-  if (!toneReady) {
-    try {
-      await Tone.start();
-      toneReady = true;
-    } catch {
-      return false;
+  try {
+    const sampler = await getSampler();
+    if (!clickSynth) {
+      clickSynth = new Tone.Synth({
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 },
+      }).toDestination();
     }
+    applyVolume();
+    return { sampler };
+  } catch {
+    return null;
   }
-  if (!synth) {
-    synth = new Tone.PolySynth(Tone.Synth).toDestination();
-  }
-  if (!clickSynth) {
-    clickSynth = new Tone.Synth({
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 },
-    }).toDestination();
-  }
-  applyVolume();
-  return true;
 }
 
 export async function setBpm(bpm: number): Promise<void> {
-  if (!(await ensureAudio())) {
+  const ready = await ensureAudio();
+  if (!ready) {
     return;
   }
   Tone.Transport.bpm.rampTo(bpm, 0.05);
@@ -80,9 +73,11 @@ export async function playSequence(sequence: SequenceToken[], options: PlayOptio
   if (!sequence.length) {
     return;
   }
-  if (!(await ensureAudio())) {
+  const ready = await ensureAudio();
+  if (!ready) {
     return;
   }
+  const sampler = ready.sampler;
   const subdivision = Tone.Time('8n').toSeconds();
   const beatSeconds = Tone.Time('4n').toSeconds();
   const countInBeats = options.countIn ?? 0;
@@ -101,8 +96,7 @@ export async function playSequence(sequence: SequenceToken[], options: PlayOptio
   }));
   sequencePart = new Tone.Part((time, value: { midi: number; id: string; sequenceIndex: number }) => {
     emitNotePlay(value.id, value.sequenceIndex);
-    const frequency = Tone.Frequency(value.midi, 'midi').toFrequency();
-    synth!.triggerAttackRelease(frequency, '8n', time);
+    sampler.triggerAttackRelease(midiToNoteName(value.midi), '8n', time);
   }, events as any);
   if (sequencePart) {
     const loopEnabled = options.loop ?? false;
@@ -143,23 +137,43 @@ export function setGlobalVolume(value: number): void {
   applyVolume();
 }
 
-export async function playChord(voicing: VoicingPosition[], tuningMidi: number[]): Promise<void> {
+export async function playChord(
+  voicing: VoicingPosition[],
+  tuningMidi: number[],
+  mode: 'arpeggio' | 'strum' | 'picked' = 'arpeggio',
+): Promise<void> {
   if (!voicing.length) {
     return;
   }
-  if (!(await ensureAudio())) {
+  const ready = await ensureAudio();
+  if (!ready) {
     return;
   }
+  const sampler = ready.sampler;
   const startTime = Tone.now();
-  voicing.forEach((position, index) => {
+  const ordered = [...voicing];
+  if (mode === 'arpeggio') {
+    ordered.sort((a, b) => b.string - a.string);
+  }
+  ordered.forEach((position, index) => {
     const stringMidi = tuningMidi[position.string - 1];
     if (typeof stringMidi !== 'number') {
       return;
     }
     const midi = stringMidi + position.fret;
-    const time = startTime + index * 0.018;
-    const frequency = Tone.Frequency(midi, 'midi').toFrequency();
-    synth!.triggerAttackRelease(frequency, '8n', time);
+    let time = startTime;
+    let duration: Tone.Unit.Time = '2n';
+    if (mode === 'arpeggio') {
+      time += index * 0.08;
+      duration = '2n';
+    } else if (mode === 'picked') {
+      time += (index % 2 === 0 ? index * 0.12 : index * 0.18) + Math.random() * 0.03;
+      duration = '1n';
+    } else {
+      time += index * 0.015;
+      duration = '1m';
+    }
+    sampler.triggerAttackRelease(midiToNoteName(midi), duration, time);
   });
 }
 
@@ -173,12 +187,9 @@ function disposeSequence(): void {
 }
 
 function applyVolume(): void {
-  const db = normalizedToDb(masterVolume);
-  if (synth) {
-    synth.volume.value = db;
-  }
+  setSamplerVolume(masterVolume).catch(() => {});
   if (clickSynth) {
-    clickSynth.volume.value = db;
+    clickSynth.volume.value = normalizedToDb(masterVolume);
   }
 }
 

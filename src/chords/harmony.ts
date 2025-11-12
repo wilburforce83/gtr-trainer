@@ -143,8 +143,10 @@ function chooseNextState({
 }): string {
   const transitions = (prevState && pack.transitions[prevState]) || null;
   const candidateEntries = transitions ? Object.entries(transitions) : Object.entries(pack.start);
-  let bestState = candidateEntries[0]?.[0] ?? 'Imaj7';
-  let bestScore = Number.NEGATIVE_INFINITY;
+  if (!candidateEntries.length) {
+    return 'Imaj7';
+  }
+  const weighted: Record<string, number> = {};
   candidateEntries.forEach(([state, weight]) => {
     const probability = Math.max(weight || 0.001, 0.001);
     let score = Math.log(probability);
@@ -152,13 +154,11 @@ function chooseNextState({
     score -= repetitionPenalty(state, sequence, index);
     score -= functionPenalty(prevState, state, mode);
     score += cadenceReward(state, sequence, index, cadence);
-    score += Math.random() * 0.05;
-    if (score > bestScore) {
-      bestScore = score;
-      bestState = state;
-    }
+    score += Math.random() * 0.25;
+    const adjusted = Math.exp(score);
+    weighted[state] = Number.isFinite(adjusted) ? Math.max(adjusted, 0.0001) : 0.0001;
   });
-  return bestState;
+  return weightedPick(weighted);
 }
 
 function buildBluesSequence(bars: number, cellsPerBar: number, pack: StylePack): string[] {
