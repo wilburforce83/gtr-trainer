@@ -444,129 +444,131 @@ export default function ChordsPage() {
         </div>
       </section>
 
-      <section className="chords-workspace">
-        <div className="progression-pane">
-          <ProgressionEditor
-            cells={cells}
-            bars={bars}
-            selectedIndex={selectedIndex}
-            onSelect={handleSelectCell}
-            onToggleLock={handleToggleLock}
-            onReplace={handleReplace}
-            onReharmonize={handleReharmonize}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDelete}
-            onMove={handleMoveCell}
-          />
-        </div>
-      </section>
-
-      <section className="chords-lower-grid">
-        <div className="voicing-summary">
-          <div className="voicing-header">
-            <div>
-              <p className="eyebrow">Selected Cell</p>
-              <h3>
-                {selectedCell?.roman} · {selectedCell?.symbol}
-              </h3>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedCell?.voicing) {
-                  playChord(selectedCell.voicing, { mode: arpeggioMode });
-                }
-              }}
-            >
-              Play chord
-            </button>
-          </div>
-          <ChordDiagram voicing={selectedCell?.voicing} />
-        </div>
-        <div className="voicing-options">
-          <nav className="voicing-tabs">
-            <button type="button" className={panelTab === 'voicings' ? 'active' : ''} onClick={() => setPanelTab('voicings')}>
-              Voicings
-            </button>
-            <button type="button" className={panelTab === 'alt' ? 'active' : ''} onClick={() => setPanelTab('alt')}>
-              Alt Chords
-            </button>
-            <button type="button" className={panelTab === 'info' ? 'active' : ''} onClick={() => setPanelTab('info')}>
-              Info
-            </button>
-          </nav>
-          {panelTab === 'voicings' && (
-            <ChordList
-              voicings={voicingOptions}
-              selectedId={selectedCell?.voicing?.id}
-              arpeggioMode={arpeggioMode}
-              onModeChange={setArpeggioMode}
-              onSelect={handleSelectVoicing}
-              onPlay={(voicing) => playChord(voicing, { mode: arpeggioMode })}
+      <div className="chords-main">
+        <section className="chords-workspace">
+          <div className="progression-pane">
+            <ProgressionEditor
+              cells={cells}
+              bars={bars}
+              selectedIndex={selectedIndex}
+              onSelect={handleSelectCell}
+              onToggleLock={handleToggleLock}
+              onReplace={handleReplace}
+              onReharmonize={handleReharmonize}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDelete}
+              onMove={handleMoveCell}
             />
-          )}
-          {panelTab === 'alt' && (
-            <div className="alt-chord-list">
-              {altChords.map((option) => (
-                <button key={option.symbol} type="button" onClick={() => handleAltChord(option.symbol)}>
-                  {option.label}
-                </button>
-              ))}
-              {!altChords.length && <p className="muted">No alternates for this chord.</p>}
-            </div>
-          )}
-          {panelTab === 'info' && selectedCell && (
-            <ul className="voicing-info">
-              <li>
-                <strong>Function:</strong> {selectedCell.func}
-              </li>
-              <li>
-                <strong>Locked:</strong> {selectedCell.locked ? 'Yes' : 'No'}
-              </li>
-              <li>
-                <strong>Voicing:</strong> {selectedCell.voicing ? `${selectedCell.voicing.root}${selectedCell.voicing.chordKind}` : '—'}
-              </li>
-            </ul>
-          )}
-        </div>
-        <div className="transport-pane">
-          <Transport
-            bpm={bpm}
-            loop={loop}
-            metronome={metronome}
-            isPlaying={isPlaying}
-            onBpmChange={setBpm}
-            onPlay={handlePlay}
-            onStop={handleStop}
-            onToggleLoop={setLoop}
-            onToggleMetronome={handleToggleMetronome}
-            mode={arpeggioMode}
-            onModeChange={setArpeggioMode}
-            reverb={reverbAmount}
-            tone={toneAmount}
-            tape={tapeAmount}
-            onReverbChange={handleReverbChange}
-            onToneChange={handleToneChange}
-            onTapeChange={handleTapeChange}
-          />
-        </div>
-      </section>
+          </div>
+        </section>
 
-      <section className="chords-footer">
-        <ExportBar
-          onExportJSON={() =>
-            exportProgressionJson({
-              key: keyName,
-              mode,
-              style,
-              bpm,
-              cells,
-            })
-          }
-          onExportMIDI={() => exportProgressionMidi(cells, bpm)}
-          onExportPNG={() => exportProgressionPng(cells)}
-        />
-      </section>
+        <section className="chords-lower-grid">
+          <div className="voicing-summary">
+            <div className="voicing-header">
+              <div>
+                <p className="eyebrow">Selected Cell</p>
+                <h3>
+                  {selectedCell?.roman} · {selectedCell?.symbol}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedCell?.voicing) {
+                    playChord(selectedCell.voicing, { mode: arpeggioMode });
+                  }
+                }}
+              >
+                Play chord
+              </button>
+            </div>
+            <ChordDiagram voicing={selectedCell?.voicing} />
+          </div>
+          <div className="voicing-options">
+            <nav className="voicing-tabs">
+              <button type="button" className={panelTab === 'voicings' ? 'active' : ''} onClick={() => setPanelTab('voicings')}>
+                Voicings
+              </button>
+              <button type="button" className={panelTab === 'alt' ? 'active' : ''} onClick={() => setPanelTab('alt')}>
+                Alt Chords
+              </button>
+              <button type="button" className={panelTab === 'info' ? 'active' : ''} onClick={() => setPanelTab('info')}>
+                Info
+              </button>
+            </nav>
+            {panelTab === 'voicings' && (
+              <ChordList
+                voicings={voicingOptions}
+                selectedId={selectedCell?.voicing?.id}
+                arpeggioMode={arpeggioMode}
+                onModeChange={setArpeggioMode}
+                onSelect={handleSelectVoicing}
+                onPlay={(voicing) => playChord(voicing, { mode: arpeggioMode })}
+              />
+            )}
+            {panelTab === 'alt' && (
+              <div className="alt-chord-list">
+                {altChords.map((option) => (
+                  <button key={option.symbol} type="button" onClick={() => handleAltChord(option.symbol)}>
+                    {option.label}
+                  </button>
+                ))}
+                {!altChords.length && <p className="muted">No alternates for this chord.</p>}
+              </div>
+            )}
+            {panelTab === 'info' && selectedCell && (
+              <ul className="voicing-info">
+                <li>
+                  <strong>Function:</strong> {selectedCell.func}
+                </li>
+                <li>
+                  <strong>Locked:</strong> {selectedCell.locked ? 'Yes' : 'No'}
+                </li>
+                <li>
+                  <strong>Voicing:</strong> {selectedCell.voicing ? `${selectedCell.voicing.root}${selectedCell.voicing.chordKind}` : '—'}
+                </li>
+              </ul>
+            )}
+          </div>
+          <div className="transport-pane">
+            <Transport
+              bpm={bpm}
+              loop={loop}
+              metronome={metronome}
+              isPlaying={isPlaying}
+              onBpmChange={setBpm}
+              onPlay={handlePlay}
+              onStop={handleStop}
+              onToggleLoop={setLoop}
+              onToggleMetronome={handleToggleMetronome}
+              mode={arpeggioMode}
+              onModeChange={setArpeggioMode}
+              reverb={reverbAmount}
+              tone={toneAmount}
+              tape={tapeAmount}
+              onReverbChange={handleReverbChange}
+              onToneChange={handleToneChange}
+              onTapeChange={handleTapeChange}
+            />
+          </div>
+        </section>
+
+        <section className="chords-footer">
+          <ExportBar
+            onExportJSON={() =>
+              exportProgressionJson({
+                key: keyName,
+                mode,
+                style,
+                bpm,
+                cells,
+              })
+            }
+            onExportMIDI={() => exportProgressionMidi(cells, bpm)}
+            onExportPNG={() => exportProgressionPng(cells)}
+          />
+        </section>
+      </div>
     </div>
   );
 }
