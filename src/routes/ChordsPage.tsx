@@ -404,10 +404,6 @@ export default function ChordsPage() {
     setCells((prev) => applyVoicings(humanizeChordCells(prev, style)));
   };
 
-  const handleQuantize = () => {
-    setCells((prev) => quantizeProgression(prev));
-  };
-
   const handleMoveCell = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) {
       return;
@@ -580,17 +576,14 @@ export default function ChordsPage() {
             <button type="button" className="primary" onClick={() => handleGenerate(true)}>
               Generate
             </button>
-            <button type="button" onClick={() => setShowSongModal(true)}>
-              Songs
-            </button>
             <button type="button" onClick={handleClear}>
               Clear
             </button>
             <button type="button" onClick={handleHumanize}>
               Humanize
             </button>
-            <button type="button" onClick={handleQuantize}>
-              Quantize
+            <button type="button" onClick={() => setShowSongModal(true)}>
+              Songs
             </button>
           </div>
           <div className="control-buttons export-actions">
@@ -783,13 +776,6 @@ export default function ChordsPage() {
       <SongManagerModal open={showSongModal} onClose={() => setShowSongModal(false)} current={currentSongPayload} onLoad={handleSongLoad} />
     </div>
   );
-}
-
-function quantizeProgression(cells: HarmonyCell[]): HarmonyCell[] {
-  return cells
-    .slice()
-    .sort((a, b) => a.index - b.index)
-    .map((cell, index) => ({ ...cell, index }));
 }
 
 type ManualChordOption = {
