@@ -1,9 +1,9 @@
 import type { ScaleDef } from '../scales';
 
 export interface ControlsProps {
-  tunings: { id: string; label: string }[];
-  tuningId: string;
-  onTuningChange: (id: string) => void;
+  instruments: Array<{ id: string; label: string }>;
+  instrumentId: string;
+  onInstrumentChange: (id: string) => void;
   keys: string[];
   keyName: string;
   onKeyChange: (key: string) => void;
@@ -24,40 +24,39 @@ export interface ControlsProps {
   canFlipRelative: boolean;
 }
 
-export function Controls(props: ControlsProps) {
-  const {
-    tunings,
-    tuningId,
-    onTuningChange,
-    keys,
-    keyName,
-    onKeyChange,
-    scales,
-    scaleId,
-    onScaleChange,
-    positionIndex,
-    positionCount,
-    onPositionChange,
-    bpm,
-    onBpmChange,
-    onPlay,
-    onStop,
-    isPlaying,
-    loop,
-    onLoopToggle,
-    onRelativeToggle,
-    canFlipRelative,
-  } = props;
+export function Controls({
+  instruments,
+  instrumentId,
+  onInstrumentChange,
+  keys,
+  keyName,
+  onKeyChange,
+  scales,
+  scaleId,
+  onScaleChange,
+  positionIndex,
+  positionCount,
+  onPositionChange,
+  bpm,
+  onBpmChange,
+  onPlay,
+  onStop,
+  isPlaying,
+  loop,
+  onLoopToggle,
+  onRelativeToggle,
+  canFlipRelative,
+}: ControlsProps) {
 
   return (
     <section className="controls">
       <div className="control-row primary">
         <label>
-          Tuning
-          <select value={tuningId} onChange={(event) => onTuningChange(event.target.value)}>
-            {tunings.map((tuning) => (
-              <option key={tuning.id} value={tuning.id}>
-                {tuning.label}
+          Instrument
+          <select value={instrumentId} onChange={(event) => onInstrumentChange(event.target.value)}>
+            {instruments.map((instrument) => (
+              <option key={instrument.id} value={instrument.id}>
+                {instrument.label}
               </option>
             ))}
           </select>

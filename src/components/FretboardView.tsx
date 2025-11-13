@@ -7,9 +7,10 @@ interface Props {
   markers: NoteMarker[];
   highlightIds: Set<string>;
   tuning: string[];
+  frets?: number;
 }
 
-const FretboardView = forwardRef<HTMLDivElement, Props>(({ markers, highlightIds, tuning }, ref) => {
+const FretboardView = forwardRef<HTMLDivElement, Props>(({ markers, highlightIds, tuning, frets = 22 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fretboardRef = useRef<FretboardHandle | null>(null);
   const [renderWidth, setRenderWidth] = useState(0);
@@ -43,7 +44,7 @@ const FretboardView = forwardRef<HTMLDivElement, Props>(({ markers, highlightIds
     }
     container.innerHTML = '';
     fretboardRef.current = mountFretboard(container, {
-      frets: 22,
+      frets,
       tuning: tuning.map((note) => note.replace(/\d/g, '')),
       width: renderWidth,
     });
@@ -54,7 +55,7 @@ const FretboardView = forwardRef<HTMLDivElement, Props>(({ markers, highlightIds
       destroyFretboard(fretboardRef.current);
       fretboardRef.current = null;
     };
-  }, [tuning, renderWidth]);
+  }, [tuning, frets, renderWidth]);
 
   useEffect(() => {
     renderNotes(fretboardRef.current, markers);

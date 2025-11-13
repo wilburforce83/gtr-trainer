@@ -1,74 +1,13 @@
 import * as Tone from 'tone';
 
-const GUITAR_SAMPLE_NOTES = [
-  'Gb2',
-  'Ab2',
-  'Bb2',
-  'Db3',
-  'Eb3',
-  'E3',
-  'F3',
-  'Gb3',
-  'G3',
-  'Ab3',
-  'A3',
-  'Bb3',
-  'B3',
-  'C4',
-  'Db4',
-  'D4',
-  'Eb4',
-  'E4',
-  'F4',
-  'Gb4',
-  'G4',
-  'Ab4',
-  'A4',
-  'Bb4',
-  'B4',
-  'C5',
-  'Db5',
-  'D5',
-  'Eb5',
-  'E5',
-  'F5',
-  'Gb5',
-  'G5',
-  'Ab5',
-  'A5',
-  'Bb5',
-  'B5',
-  'C6',
-  'Db6',
-  'D6',
-  'E6',
-  'F6',
-  'G6',
-  'A6',
-  'B6',
-  'C7',
-  'D7',
-];
-
-const GUITAR_SAMPLE_URLS: Record<string, string> = GUITAR_SAMPLE_NOTES.reduce((acc, note) => {
-  const match = note.match(/^([A-G](?:b|#)?)(\d)$/i);
-  if (!match) {
-    return acc;
-  }
-  const [, pitch, octave] = match;
-  const normalizedPitch = pitch[0].toUpperCase() + pitch.slice(1);
-  const actualOctave = Number(octave) - 1;
-  const actualNote = `${normalizedPitch}${actualOctave}`;
-  const midi = Tone.Frequency(actualNote).toMidi();
-  if (midi !== null) {
-    const canonical = Tone.Frequency(midi, 'midi').toNote();
-    if (canonical) {
-      acc[canonical] = `${note}.wav`;
-    }
-  }
-  acc[actualNote] = `${note}.wav`;
-  return acc;
-}, {} as Record<string, string>);
+const GUITAR_SAMPLE_URLS: Record<string, string> = {
+  E2: 'E2.wav',
+  A2: 'A2.wav',
+  D3: 'D3.wav',
+  G3: 'G3.wav',
+  B3: 'B3.wav',
+  E4: 'E4.wav',
+};
 
 const GUITAR_SAMPLE_BASE_URL = '/samples/guitar/';
 const PIANO_SAMPLE_BASE_URL = '/samples/piano/';
@@ -435,6 +374,7 @@ export async function setAmpProfile(id: string): Promise<void> {
 export function midiToNoteName(midi: number): string {
   const shiftedMidi = midi + getActiveOctaveShift() * 12;
   const name = Tone.Frequency(shiftedMidi, 'midi').toNote();
+  logSampleDebug(shiftedMidi, name ?? 'Unknown');
   return name ?? Tone.Frequency(60, 'midi').toNote();
 }
 
@@ -471,4 +411,44 @@ function applyEffectSettings(): void {
 
 function getAmpProfile(id: string): AmpProfile {
   return AMP_PROFILES.find((profile) => profile.id === id) ?? AMP_PROFILES[0];
+}
+
+function logSampleDebug(midi: number, note: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const instrument = getInstrumentConfig();
+  const freq = Tone.Frequency(midi, 'midi').toFrequency();
+  const entries = Object.keys(instrument.urls).map((sampleNote) => {
+    const sampleMidi = Tone.Frequency(sampleNote).toMidi();
+    return {
+      sampleNote,
+      file: instrument.urls[sampleNote],
+      midi: sampleMidi ?? null,
+    };
+  });
+  let best = entries.find((entry) => entry.sampleNote === note && entry.midi !== null);
+  if (!best) {
+    best = entries.reduce(
+      (acc, entry) => {
+        if (entry.midi === null) {
+          return acc;
+        }
+        const diff = Math.abs(entry.midi - midi);
+        if (!acc || diff < acc.diff) {
+          return { entry, diff };
+        }
+        return acc;
+      },
+      null as { entry: typeof entries[number]; diff: number } | null,
+    )?.entry;
+  }
+  if (best && typeof best.midi === 'number') {
+    const detune = (midi - best.midi).toFixed(2);
+    console.log(
+      `[Sampler:${instrument.id}] ${note} (MIDI ${midi}) -> ${freq.toFixed(2)}Hz using sample ${best.sampleNote} (${best.file}), detune ${detune} semitones`,
+    );
+  } else {
+    console.log(`[Sampler:${instrument.id}] ${note} (MIDI ${midi}) -> ${freq.toFixed(2)}Hz`);
+  }
 }

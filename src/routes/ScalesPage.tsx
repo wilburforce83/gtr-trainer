@@ -4,9 +4,12 @@ import FretboardView from '../components/FretboardView';
 import TabView from '../components/TabView';
 import Toolbar from '../components/Toolbar';
 import BackButton from '../components/BackButton';
-import { buildPositions } from '../lib/positions';
-import { buildNeckMarkers, STANDARD_TUNING, tuningToMidi } from '../lib/neck';
-import { buildSequence } from '../lib/sequencing';
+import {
+  INSTRUMENTS,
+  buildInstrumentScaleData,
+  getInstrument,
+  type InstrumentId,
+} from '../lib/instrumentScales';
 import {
   DEFAULT_KEY,
   DEFAULT_SCALE_ID,
@@ -18,16 +21,9 @@ import {
 } from '../scales';
 import { Note } from '@tonaljs/tonal';
 import { playSequence, setBpm, stopAll, primeAudioUnlock } from '../lib/audio';
-import type { NoteMarker } from '../lib/neck';
-import type { SequenceToken } from '../lib/sequencing';
-
-const TUNING_OPTIONS = [
-  { id: 'EADGBE', label: 'Standard (EADGBE)', value: STANDARD_TUNING },
-  { id: 'DROP_D', label: 'Drop D (DADGBE)', value: ['E4', 'B3', 'G3', 'D3', 'A2', 'D2'] },
-];
 
 function ScalesPage() {
-  const [tuningId, setTuningId] = useState('EADGBE');
+  const [instrumentId, setInstrumentId] = useState<InstrumentId>('guitar');
   const [keyName, setKeyName] = useState(DEFAULT_KEY);
   const [scaleId, setScaleId] = useState(DEFAULT_SCALE_ID);
   const [positionIndex, setPositionIndex] = useState(0);
@@ -38,37 +34,23 @@ function ScalesPage() {
   const fretboardRef = useRef<HTMLDivElement>(null);
   const tabRef = useRef<HTMLDivElement>(null);
 
-  const tuning = useMemo(() => {
-    return TUNING_OPTIONS.find((option) => option.id === tuningId)?.value ?? STANDARD_TUNING;
-  }, [tuningId]);
-
-  const tuningMidi = useMemo(() => tuningToMidi(tuning), [tuning]);
+  const instrument = useMemo(() => getInstrument(instrumentId), [instrumentId]);
   const scaleDef: ScaleDef = useMemo(() => getScaleById(scaleId), [scaleId]);
 
-  const positions = useMemo(
-    () => buildPositions({ key: keyName, scale: scaleDef, tuningMidi }),
-    [keyName, scaleDef, tuningMidi],
-  );
+  const { markers, highlightIds, sequence, tuningNotes, windows, clampedPositionIndex } = useMemo(() => {
+    return buildInstrumentScaleData({
+      instrument,
+      key: keyName,
+      scale: scaleDef,
+      positionIndex,
+    });
+  }, [instrument, keyName, scaleDef, positionIndex]);
 
   useEffect(() => {
-    if (positionIndex >= positions.length) {
-      setPositionIndex(0);
+    if (clampedPositionIndex !== positionIndex) {
+      setPositionIndex(clampedPositionIndex);
     }
-  }, [positions.length, positionIndex]);
-
-  const currentPosition = positions[positionIndex];
-
-  const markers: NoteMarker[] = useMemo(
-    () => buildNeckMarkers({ key: keyName, scale: scaleDef, tuning, highlighted: currentPosition?.idSet }),
-    [keyName, scaleDef, tuning, currentPosition],
-  );
-
-  const sequence: SequenceToken[] = useMemo(() => {
-    if (!currentPosition) {
-      return [];
-    }
-    return buildSequence(currentPosition);
-  }, [currentPosition]);
+  }, [clampedPositionIndex, positionIndex]);
 
   useEffect(() => {
     return () => {
@@ -131,17 +113,17 @@ function ScalesPage() {
       </header>
 
       <Controls
-        tunings={TUNING_OPTIONS}
-        tuningId={tuningId}
-        onTuningChange={setTuningId}
+        instruments={INSTRUMENTS}
+        instrumentId={instrumentId}
+        onInstrumentChange={(value) => setInstrumentId(value as InstrumentId)}
         keys={KEY_OPTIONS}
         keyName={keyName}
         onKeyChange={setKeyName}
         scales={SCALES}
         scaleId={scaleDef.id}
         onScaleChange={setScaleId}
-        positionIndex={positionIndex}
-        positionCount={positions.length}
+        positionIndex={clampedPositionIndex}
+        positionCount={windows.length}
         onPositionChange={setPositionIndex}
         bpm={bpm}
         onBpmChange={setBpmValue}
@@ -158,7 +140,13 @@ function ScalesPage() {
 
       <div className="viewport">
         <div className="surface fretboard-container">
-          <FretboardView markers={markers} highlightIds={currentPosition?.idSet ?? new Set()} tuning={tuning} ref={fretboardRef} />
+          <FretboardView
+            markers={markers}
+            highlightIds={highlightIds}
+            tuning={tuningNotes}
+            frets={instrument.frets}
+            ref={fretboardRef}
+          />
         </div>
         <div className="surface tab-surface">
           <TabView sequence={sequence} ref={tabRef} />
