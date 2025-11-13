@@ -4,6 +4,8 @@ import type { HarmonyCell } from './types';
 import type { Voicing } from './voicings';
 import { STANDARD_TUNING, tuningToMidi } from '../lib/neck';
 import { getSampler, midiToNoteName, primeSamplerUnlock } from '../lib/samplePlayer';
+import type { DrumPattern } from '../drums/types';
+import { primeDrumKit, scheduleDrumPattern } from '../drums/audio';
 
 export {
   DEFAULT_EFFECT_SETTINGS,
@@ -20,8 +22,14 @@ export type { EffectSettings, AmpProfile } from '../lib/samplePlayer';
 
 type StrumMode = 'arpeggio' | 'strum' | 'picked';
 
+type DrumPlaybackOptions = {
+  enabled: boolean;
+  pattern: DrumPattern | null;
+};
+
 type PlayOptions = {
   mode?: StrumMode;
+  drums?: DrumPlaybackOptions;
 };
 
 const tuningMidi = tuningToMidi(STANDARD_TUNING);
@@ -96,26 +104,46 @@ export async function playProgression(
   if (!ready || !sampler) {
     return false;
   }
+  const drumOptions = options.drums;
+  const drumPattern = drumOptions?.enabled ? drumOptions.pattern : null;
+  if (drumPattern) {
+    await primeDrumKit();
+  }
   const mode = options.mode ?? 'arpeggio';
   Tone.Transport.stop();
   Tone.Transport.cancel();
+  Tone.Transport.position = 0;
   Tone.Transport.loop = loop;
-  const totalBars = Math.max(1, cells.length / 2);
+  const progressionBars = Math.max(1, cells.length / 2);
+  const drumBars = drumPattern?.barCount ?? 0;
+  const totalBars = Math.max(progressionBars, drumBars, 1);
   Tone.Transport.loopEnd = `${Math.ceil(totalBars)}:0:0`;
 
-  cells.forEach((cell, index) => {
-    const position = cellIndexToPosition(index);
-    Tone.Transport.schedule((time) => {
-      const voicing = cell.voicing;
-      if (voicing) {
-        const notes = voicingToNotes(voicing);
-        triggerNotesWithMode(sampler, notes, time, mode);
-      } else {
-        const notes = chordSymbolToNotes(cell.symbol);
-        triggerNotesWithMode(sampler, notes, time, mode);
+  const copies = Math.ceil(totalBars / progressionBars);
+  for (let copy = 0; copy < Math.max(1, copies); copy += 1) {
+    cells.forEach((cell, index) => {
+      const barNumber = Math.floor(index / 2) + copy * progressionBars;
+      if (barNumber >= totalBars) {
+        return;
       }
-    }, position);
-  });
+      const globalIndex = copy * cells.length + index;
+      const position = cellIndexToPosition(globalIndex);
+      Tone.Transport.schedule((time) => {
+        const voicing = cell.voicing;
+        if (voicing) {
+          const notes = voicingToNotes(voicing);
+          triggerNotesWithMode(sampler, notes, time, mode);
+        } else {
+          const notes = chordSymbolToNotes(cell.symbol);
+          triggerNotesWithMode(sampler, notes, time, mode);
+        }
+      }, position);
+    });
+  }
+
+  if (drumPattern) {
+    scheduleDrumPattern(drumPattern, totalBars);
+  }
 
   Tone.Transport.start();
   return true;

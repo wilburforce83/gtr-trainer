@@ -94,12 +94,12 @@ export type AmpProfile = {
 };
 
 export const AMP_PROFILES: AmpProfile[] = [
-  { id: 'studio', label: 'Studio Clean (AKG D112)', url: '/samples/ir/akg-d112.wav' },
+  { id: 'studio', label: 'Studio Clean', url: '/samples/ir/akg-d112.wav' },
   { id: 'twin', label: 'Fender Twin', url: '/samples/ir/fender-twin.wav' },
-  { id: 'frontman', label: 'Fender Frontman 212', url: '/samples/ir/fender-frontman.wav' },
+  { id: 'frontman', label: 'Frontman 212', url: '/samples/ir/fender-frontman.wav' },
   { id: 'ampeg', label: 'Ampeg Classic', url: '/samples/ir/ampeg-classic.wav' },
   { id: 'marshall', label: 'Marshall 1960VB', url: '/samples/ir/marshall-1960vb.wav' },
-  { id: 'direct', label: 'Direct (Bypass)', url: null },
+  { id: 'direct', label: 'Direct', url: null },
 ];
 
 export const DEFAULT_EFFECT_SETTINGS: EffectSettings = {

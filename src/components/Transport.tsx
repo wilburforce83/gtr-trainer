@@ -24,6 +24,10 @@ type Props = {
   octaveShift: number;
   octaveShiftOptions: number[];
   onOctaveShiftChange(value: number): void;
+  drumPatternIndex: number;
+  drumPatternOptions: Array<{ value: number; label: string }>;
+  onDrumPatternChange(value: number): void;
+  onOpenMixer(): void;
 };
 
 const MODE_OPTIONS: StrumMode[] = ['arpeggio', 'strum', 'picked'];
@@ -52,6 +56,10 @@ export default function Transport({
   octaveShift,
   octaveShiftOptions,
   onOctaveShiftChange,
+  drumPatternIndex,
+  drumPatternOptions,
+  onDrumPatternChange,
+  onOpenMixer,
 }: Props) {
   return (
     <div className="transport-bar">
@@ -67,9 +75,9 @@ export default function Transport({
               Stop
             </button>
           )}
-          <label className="toggle">
-            <input type="checkbox" checked={loop} onChange={(event) => onToggleLoop(event.target.checked)} />
+          <label className="toggle-vertical">
             Loop
+            <input type="checkbox" checked={loop} onChange={(event) => onToggleLoop(event.target.checked)} />
           </label>
           <label>
             Style
@@ -81,26 +89,43 @@ export default function Transport({
               ))}
             </select>
           </label>
-          <label>
-            Amp
-            <select value={ampId} onChange={(event) => onAmpChange(event.target.value)}>
-              {ampProfiles.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Instrument
-            <select value={instrument} onChange={(event) => onInstrumentChange(event.target.value)}>
-              {instrumentOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="transport-line">
+            <label>
+              Amp
+              <select value={ampId} onChange={(event) => onAmpChange(event.target.value)}>
+                {ampProfiles.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="ghost" onClick={onOpenMixer} aria-label="Open mixer">
+              🎚️
+            </button>
+          </div>
+          <div className="transport-line">
+            <label>
+              Instrument
+              <select value={instrument} onChange={(event) => onInstrumentChange(event.target.value)}>
+                {instrumentOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Drums
+              <select value={String(drumPatternIndex)} onChange={(event) => onDrumPatternChange(Number(event.target.value))}>
+                {drumPatternOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {showOctaveShift && (
             <label>
               Octave

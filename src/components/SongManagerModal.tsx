@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { HarmonyCell, ModeName, StyleName } from '../chords/types';
+import type { DrumPattern, DrumMixerSettings } from '../drums/types';
 
 const STORAGE_KEY = 'gtr-song-saves-v1';
 
@@ -10,6 +11,10 @@ export type SongPayload = {
   bpm: number;
   loop: boolean;
   cells: HarmonyCell[];
+  drumsEnabled: boolean;
+  drumPatternIndex: number;
+  drumPattern?: DrumPattern | null;
+  mixer: DrumMixerSettings;
 };
 
 export type SavedSong = {
