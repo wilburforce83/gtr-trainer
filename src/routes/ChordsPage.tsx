@@ -27,11 +27,17 @@ import {
   AMP_PROFILES,
   INSTRUMENT_OPTIONS,
 } from '../chords/audio';
-import { STANDARD_TUNING, tuningToMidi, buildNeckMarkers } from '../lib/neck';
-import { buildPositions } from '../lib/positions';
 import { renderChordDiagram } from '../chords/svguitar';
 import FretboardView from '../components/FretboardView';
 import { getScaleById } from '../scales';
+import {
+  INSTRUMENTS,
+  buildInstrumentScaleData,
+  getInstrument,
+  getInstrumentTuning,
+  type InstrumentId,
+} from '../lib/instrumentScales';
+import { STANDARD_TUNING, tuningToMidi } from '../lib/neck';
 
 const STORAGE_KEY = 'gtr-chords-state-v1';
 const RESOLUTION = '1/2';
@@ -53,7 +59,6 @@ const STYLE_OPTIONS: Array<{ value: StyleName; label: string }> = [
 
 type PanelTab = 'voicings' | 'alt' | 'info';
 
-const tuningMidi = tuningToMidi(STANDARD_TUNING);
 const CELLS_PER_BAR = 2;
 const { reverb: DEFAULT_REVERB, tone: DEFAULT_TONE, tape: DEFAULT_TAPE } = DEFAULT_EFFECT_SETTINGS;
 
@@ -76,6 +81,10 @@ const MODE_TO_SCALE_ID: Partial<Record<ModeName, string>> = {
   'harmonic minor': 'harmonicMinor',
   mixolydian: 'mixolydian',
 };
+const tuningMidi = tuningToMidi(STANDARD_TUNING);
+
+const DEFAULT_SOLO_INSTRUMENT_ID: InstrumentId = 'guitar';
+const DEFAULT_SOLO_TUNING_ID = getInstrument(DEFAULT_SOLO_INSTRUMENT_ID).tunings[0]?.id ?? '';
 
 function buildEmptyProgression(barCount: number): HarmonyCell[] {
   const totalCells = barCount * CELLS_PER_BAR;
@@ -104,6 +113,8 @@ export default function ChordsPage() {
   const [toneAmount, setToneAmountState] = useState(DEFAULT_TONE);
   const [tapeAmount, setTapeAmountState] = useState(DEFAULT_TAPE);
   const [scalePositionIndex, setScalePositionIndex] = useState(0);
+  const [soloInstrumentId, setSoloInstrumentId] = useState<InstrumentId>(DEFAULT_SOLO_INSTRUMENT_ID);
+  const [soloTuningId, setSoloTuningId] = useState(DEFAULT_SOLO_TUNING_ID);
   const [ampProfileId, setAmpProfileId] = useState(AMP_PROFILES[0].id);
   const [instrumentId, setInstrumentId] = useState(INSTRUMENT_OPTIONS[0].id);
   const [pianoOctaveShift, setPianoOctaveShift] = useState(DEFAULT_PIANO_OCTAVE_SHIFT);
@@ -262,6 +273,19 @@ export default function ChordsPage() {
     }
   }, [instrumentId, pianoOctaveShift]);
 
+  const soloInstrument = useMemo(() => getInstrument(soloInstrumentId), [soloInstrumentId]);
+  const soloTuning = useMemo(() => getInstrumentTuning(soloInstrument, soloTuningId), [soloInstrument, soloTuningId]);
+
+  useEffect(() => {
+    if (!soloInstrument.tunings.some((option) => option.id === soloTuningId)) {
+      setSoloTuningId(soloInstrument.tunings[0]?.id ?? '');
+    }
+  }, [soloInstrument, soloTuningId]);
+
+  useEffect(() => {
+    setScalePositionIndex(0);
+  }, [soloInstrumentId, soloTuningId]);
+
   const selectedCell = cells.find((cell) => cell.index === selectedIndex) ?? cells[0];
   const voicingOptions = useMemo(() => {
     if (!selectedCell) {
@@ -271,30 +295,28 @@ export default function ChordsPage() {
   }, [selectedCell]);
 
   const scaleDef = useMemo(() => getScaleById(MODE_TO_SCALE_ID[mode] ?? 'minorPentatonic'), [mode]);
-  const scalePositions = useMemo(
-    () => buildPositions({ key: keyName, scale: scaleDef, tuningMidi }),
-    [keyName, scaleDef],
-  );
-
-  useEffect(() => {
-    if (scalePositionIndex >= scalePositions.length) {
-      setScalePositionIndex(0);
-    }
-  }, [scalePositions.length, scalePositionIndex]);
-
-  const activeScalePosition = scalePositions[scalePositionIndex];
-
-  const scaleMarkers = useMemo(
+  const soloScaleData = useMemo(
     () =>
-      buildNeckMarkers({
+      buildInstrumentScaleData({
+        instrument: soloInstrument,
+        tuning: soloTuning,
         key: keyName,
         scale: scaleDef,
-        tuning: STANDARD_TUNING,
-        highlighted: activeScalePosition?.idSet,
+        positionIndex: scalePositionIndex,
       }),
-    [keyName, scaleDef, activeScalePosition],
+    [soloInstrument, soloTuning, keyName, scaleDef, scalePositionIndex],
   );
-  const scaleHighlightIds = activeScalePosition?.idSet ?? new Set<string>();
+  const {
+    markers: scaleMarkers,
+    highlightIds: scaleHighlightIds,
+    tuningNotes: soloTuningNotes,
+    windows: soloWindows,
+    clampedPositionIndex,
+  } = soloScaleData;
+
+  useEffect(() => {
+    setScalePositionIndex((current) => (current === clampedPositionIndex ? current : clampedPositionIndex));
+  }, [clampedPositionIndex]);
 
   const handleSelectCell = (index: number) => {
     setSelectedIndex(index);
@@ -541,31 +563,58 @@ export default function ChordsPage() {
         <section className="chords-lower-grid">
           <div className="scale-pane">
             <div className="scale-pane__header">
-              <div>
-                <p className="eyebrow">Solo Scale</p>
-                <h3>
+              <p className="eyebrow">Solo Scale</p>
+              <div className="scale-pane__controls-row">
+                <p className="scale-pane__title">
                   {keyName} · {scaleDef.name}
-                </h3>
-              </div>
-              <div className="scale-position-toggle">
-                {scalePositions.length ? (
-                  scalePositions.map((_, index) => (
-                    <button
-                      type="button"
-                      key={`scale-pos-${index}`}
-                      className={index === scalePositionIndex ? 'active' : ''}
-                      onClick={() => setScalePositionIndex(index)}
+                </p>
+                <div className="scale-pane__selectors">
+                  <label>
+                    Instrument
+                    <select value={soloInstrumentId} onChange={(event) => setSoloInstrumentId(event.target.value as InstrumentId)}>
+                      {INSTRUMENTS.map((instrumentOption) => (
+                        <option key={instrumentOption.id} value={instrumentOption.id}>
+                          {instrumentOption.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Tuning
+                    <select value={soloTuningId} onChange={(event) => setSoloTuningId(event.target.value)}>
+                      {soloInstrument.tunings.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="scale-position-toggle">
+                  {soloWindows.length ? (
+                    soloWindows.map((window) => (
+                      <button
+                        type="button"
+                        key={`scale-pos-${window.index}`}
+                      className={window.index === scalePositionIndex ? 'active' : ''}
+                      onClick={() => setScalePositionIndex(window.index)}
                     >
-                      {index + 1}
+                      {window.index + 1}
                     </button>
                   ))
                 ) : (
                   <span className="muted">No positions</span>
                 )}
+                </div>
               </div>
             </div>
             <div className="scale-pane__board">
-              <FretboardView markers={scaleMarkers} highlightIds={scaleHighlightIds} tuning={STANDARD_TUNING} />
+              <FretboardView
+                markers={scaleMarkers}
+                highlightIds={scaleHighlightIds}
+                tuning={soloTuningNotes}
+                frets={soloInstrument.frets}
+              />
             </div>
           </div>
         <div className="voicing-options">
