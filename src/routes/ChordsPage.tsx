@@ -7,6 +7,7 @@ import ProgressionEditor from '../components/ProgressionEditor';
 import ChordList from '../components/ChordList';
 import Transport from '../components/Transport';
 import SongManagerModal, { type SongPayload } from '../components/SongManagerModal';
+import SampleLoadingOverlay from '../components/SampleLoadingOverlay';
 import {
   generateProgression,
   reharmonizeCell as reharmonizeHarmonyCell,
@@ -513,7 +514,8 @@ export default function ChordsPage() {
   const isPianoSelected = instrumentId === 'piano';
 
   return (
-    <div className="chords-shell">
+    <>
+      <div className="chords-shell">
       <header className="page-header">
         <div className="page-header__stack">
           <BackButton />
@@ -773,8 +775,10 @@ export default function ChordsPage() {
         </section>
 
       </div>
+      </div>
+      <SampleLoadingOverlay message="Sample assets are loading…" />
       <SongManagerModal open={showSongModal} onClose={() => setShowSongModal(false)} current={currentSongPayload} onLoad={handleSongLoad} />
-    </div>
+    </>
   );
 }
 

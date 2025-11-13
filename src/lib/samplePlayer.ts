@@ -119,6 +119,9 @@ let unlockRegistered = false;
 let readyPromise: Promise<void> | null = null;
 let readyResolver: (() => void) | null = null;
 const unlockWaiters: Array<() => void> = [];
+export type SampleLoadState = 'idle' | 'loading' | 'ready';
+let sampleLoadState: SampleLoadState = 'idle';
+const sampleStateListeners = new Set<(state: SampleLoadState) => void>();
 
 let activeInstrumentId = INSTRUMENT_DEFINITIONS[0].id;
 let reverbAmount = DEFAULT_EFFECT_SETTINGS.reverb;
@@ -202,6 +205,25 @@ async function ensureToneStarted(): Promise<void> {
   }
 }
 
+function setSampleLoadState(next: SampleLoadState): void {
+  if (sampleLoadState === next) {
+    return;
+  }
+  sampleLoadState = next;
+  sampleStateListeners.forEach((listener) => listener(sampleLoadState));
+}
+
+export function getSampleLoadState(): SampleLoadState {
+  return sampleLoadState;
+}
+
+export function subscribeSampleLoadState(listener: (state: SampleLoadState) => void): () => void {
+  sampleStateListeners.add(listener);
+  return () => {
+    sampleStateListeners.delete(listener);
+  };
+}
+
 function getInstrumentConfig(): InstrumentDefinition {
   return INSTRUMENT_MAP.get(activeInstrumentId) ?? INSTRUMENT_DEFINITIONS[0];
 }
@@ -268,6 +290,7 @@ function connectChain() {
 
 async function createSampler(): Promise<Tone.Sampler> {
   if (sampler) {
+    setSampleLoadState('ready');
     return sampler;
   }
   const instrument = getInstrumentConfig();
@@ -275,6 +298,7 @@ async function createSampler(): Promise<Tone.Sampler> {
   readyPromise = new Promise((resolve) => {
     readyResolver = resolve;
   });
+  setSampleLoadState('loading');
   sampler = new Tone.Sampler({
     urls: instrument.urls,
     baseUrl: instrument.baseUrl,
@@ -283,6 +307,7 @@ async function createSampler(): Promise<Tone.Sampler> {
     onload: () => {
       readyResolver?.();
       readyResolver = null;
+      setSampleLoadState('ready');
     },
   });
   sampler.volume.value = instrument.volume ?? 0;
@@ -300,6 +325,7 @@ export async function getSampler(): Promise<Tone.Sampler> {
   if (readyPromise) {
     await readyPromise;
   }
+  setSampleLoadState('ready');
   return instance;
 }
 

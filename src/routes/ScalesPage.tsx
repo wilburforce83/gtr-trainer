@@ -6,6 +6,7 @@ import TabView from '../components/TabView';
 import Toolbar from '../components/Toolbar';
 import BackButton from '../components/BackButton';
 import SupportButton from '../components/SupportButton';
+import SampleLoadingOverlay from '../components/SampleLoadingOverlay';
 import {
   DEFAULT_FRET_SPAN,
   INSTRUMENTS,
@@ -122,7 +123,8 @@ function ScalesPage() {
   };
 
   return (
-    <div className="app-shell">
+    <>
+      <div className="app-shell">
       <header className="page-header">
         <div className="page-header__stack">
           <BackButton />
@@ -180,7 +182,9 @@ function ScalesPage() {
           <TabView sequence={sequence} stringCount={tuning.notes.length} ref={tabRef} />
         </div>
       </div>
-    </div>
+      </div>
+      <SampleLoadingOverlay message="Sample assets are loading…" />
+    </>
   );
 }
 

@@ -1016,6 +1016,29 @@ body {
   display: none;
 }
 
+.sample-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+}
+
+.sample-overlay__card {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 14px;
+  padding: 1rem 1.5rem;
+  text-align: center;
+  box-shadow: 0 10px 45px rgba(2, 6, 23, 0.6);
+}
+
+.sample-overlay__card p {
+  margin: 0.25rem 0;
+}
+
 .transport-pane {
   justify-content: flex-start;
 }
