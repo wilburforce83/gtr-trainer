@@ -168,7 +168,7 @@ function ScalesPage() {
           />
         </div>
         <div className="surface tab-surface">
-          <TabView sequence={sequence} ref={tabRef} />
+          <TabView sequence={sequence} stringCount={tuning.notes.length} ref={tabRef} />
         </div>
       </div>
     </div>

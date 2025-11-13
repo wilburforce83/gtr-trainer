@@ -5,6 +5,7 @@ import { emitNoteHover, onNoteHover, onNotePlay } from '../lib/noteEvents';
 
 interface Props {
   sequence: SequenceToken[];
+  stringCount: number;
 }
 
 type NoteEntry = {
@@ -13,7 +14,7 @@ type NoteEntry = {
   sequenceIndex: number;
 };
 
-const TabView = forwardRef<HTMLDivElement, Props>(({ sequence }, ref) => {
+const TabView = forwardRef<HTMLDivElement, Props>(({ sequence, stringCount }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const hoverLayerRef = useRef<HTMLDivElement>(null);
@@ -25,7 +26,7 @@ const TabView = forwardRef<HTMLDivElement, Props>(({ sequence }, ref) => {
   useImperativeHandle(ref, () => containerRef.current as HTMLDivElement);
 
   useEffect(() => {
-    renderTab(canvasRef.current, sequence);
+    renderTab(canvasRef.current, sequence, stringCount);
     wireNotes();
     return () => {
       clearTab(canvasRef.current);
@@ -35,7 +36,7 @@ const TabView = forwardRef<HTMLDivElement, Props>(({ sequence }, ref) => {
       renderMarkers(hoverLayerRef.current, null, 'tab-marker hover');
       renderMarkers(playLayerRef.current, null, 'tab-marker play');
     };
-  }, [sequence]);
+  }, [sequence, stringCount]);
 
   useEffect(() => {
     const offHover = onNoteHover(({ id, source }) => {
