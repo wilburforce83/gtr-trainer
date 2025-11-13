@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Chord, Note } from '@tonaljs/tonal';
 import BackButton from '../components/BackButton';
 import SupportButton from '../components/SupportButton';
 import ProgressionEditor from '../components/ProgressionEditor';
 import ChordList from '../components/ChordList';
 import Transport from '../components/Transport';
+import SongManagerModal, { type SongPayload } from '../components/SongManagerModal';
 import {
   generateProgression,
   reharmonizeCell as reharmonizeHarmonyCell,
@@ -113,6 +115,7 @@ export default function ChordsPage() {
   const [ampProfileId, setAmpProfileId] = useState(AMP_PROFILES[0].id);
   const [instrumentId, setInstrumentId] = useState(INSTRUMENT_OPTIONS[0].id);
   const [pianoOctaveShift, setPianoOctaveShift] = useState(DEFAULT_PIANO_OCTAVE_SHIFT);
+  const [showSongModal, setShowSongModal] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -294,6 +297,17 @@ export default function ChordsPage() {
   const manualChordOptions = useMemo(
     () => buildManualChordOptions({ key: keyName, scale: scaleDef, genre: style }),
     [keyName, scaleDef, style],
+  );
+  const currentSongPayload = useMemo<SongPayload>(
+    () => ({
+      keyName,
+      scaleId,
+      style,
+      bpm,
+      loop,
+      cells,
+    }),
+    [keyName, scaleId, style, bpm, loop, cells],
   );
   const soloScaleData = useMemo(
     () =>
@@ -488,6 +502,17 @@ export default function ChordsPage() {
     setPianoOctaveShift(clampOctaveShiftValue(value));
   };
 
+  const handleSongLoad = (payload: SongPayload) => {
+    setKeyName(payload.keyName);
+    setScaleId(payload.scaleId);
+    setStyle(payload.style);
+    setBpm(payload.bpm);
+    setLoop(payload.loop);
+    setCells(payload.cells);
+    setSelectedIndex(payload.cells[0]?.index ?? null);
+    setShowSongModal(false);
+  };
+
   const altChords = selectedCell ? buildAltChords(selectedCell.symbol) : [];
   const isPianoSelected = instrumentId === 'piano';
 
@@ -501,7 +526,10 @@ export default function ChordsPage() {
             <p className="page-title">Generate genre-aware progressions with adaptive voicings.</p>
           </div>
         </div>
-        <SupportButton className="page-ko-fi" />
+        <div className="page-header__actions">
+          <Link to="/scales" className="page-swap">Scales →</Link>
+          <SupportButton className="page-ko-fi" />
+        </div>
       </header>
 
       <section className="chords-controls">
@@ -551,6 +579,9 @@ export default function ChordsPage() {
           <div className="control-buttons primary-actions">
             <button type="button" className="primary" onClick={() => handleGenerate(true)}>
               Generate
+            </button>
+            <button type="button" onClick={() => setShowSongModal(true)}>
+              Songs
             </button>
             <button type="button" onClick={handleClear}>
               Clear
@@ -749,6 +780,7 @@ export default function ChordsPage() {
         </section>
 
       </div>
+      <SongManagerModal open={showSongModal} onClose={() => setShowSongModal(false)} current={currentSongPayload} onLoad={handleSongLoad} />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Controls from '../components/Controls';
 import FretboardView from '../components/FretboardView';
 import TabView from '../components/TabView';
@@ -130,7 +131,10 @@ function ScalesPage() {
             <p className="page-title">Visualize every position across the neck.</p>
           </div>
         </div>
-        <SupportButton className="page-ko-fi" />
+        <div className="page-header__actions">
+          <Link to="/chords" className="page-swap">Go to Chords →</Link>
+          <SupportButton className="page-ko-fi" />
+        </div>
       </header>
 
       <Controls
