@@ -233,6 +233,16 @@ body {
   min-width: 8rem;
 }
 
+.chords-controls input[type='number'] {
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  color: #f8fafc;
+  padding: 0.35rem 0.5rem;
+  min-width: 4.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .control-buttons {
   display: flex;
   gap: 0.5rem;
@@ -317,6 +327,7 @@ body {
   gap: 0.4rem;
   cursor: pointer;
   position: relative;
+  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
 }
 
 .progression-cell.selected {
@@ -326,6 +337,23 @@ body {
 
 .progression-cell.locked {
   border-style: dashed;
+}
+
+.progression-cell.drag-source {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.progression-cell.drag-over {
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.55);
+}
+
+.progression-cell.drag-over-forward {
+  transform: translateX(12px);
+}
+
+.progression-cell.drag-over-backward {
+  transform: translateX(-12px);
 }
 
 .progression-cell header {

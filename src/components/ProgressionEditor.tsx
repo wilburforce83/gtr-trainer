@@ -24,6 +24,7 @@ export default function ProgressionEditor({
 }: Props) {
   const [menuIndex, setMenuIndex] = useState<number | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (menuIndex === null) {
@@ -43,10 +44,23 @@ export default function ProgressionEditor({
       <div className="progression-grid" style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(120px, 1fr))` }}>
         {cells.map((cell) => {
           const isSelected = selectedIndex === cell.index;
+          const isDragSource = dragIndex === cell.index;
+          const isDragHover = dragIndex !== null && dragOverIndex === cell.index && dragIndex !== cell.index;
+          const dragDirection = isDragHover ? (dragIndex! < cell.index ? 'forward' : 'backward') : null;
+          const classNames = [
+            'progression-cell',
+            isSelected ? 'selected' : '',
+            cell.locked ? 'locked' : '',
+            isDragSource ? 'drag-source' : '',
+            isDragHover && dragDirection ? `drag-over drag-over-${dragDirection}` : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+
           return (
             <div
               key={cell.index}
-              className={`progression-cell${isSelected ? ' selected' : ''}${cell.locked ? ' locked' : ''}`}
+              className={classNames}
               role="button"
               tabIndex={0}
               draggable
@@ -61,10 +75,14 @@ export default function ProgressionEditor({
                 event.dataTransfer.setData('text/plain', String(cell.index));
                 event.dataTransfer.effectAllowed = 'move';
                 setDragIndex(cell.index);
+                setDragOverIndex(cell.index);
               }}
               onDragOver={(event) => {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
+                if (dragOverIndex !== cell.index) {
+                  setDragOverIndex(cell.index);
+                }
               }}
               onDrop={(event) => {
                 event.preventDefault();
@@ -72,9 +90,17 @@ export default function ProgressionEditor({
                   onMove(dragIndex, cell.index);
                 }
                 setDragIndex(null);
+                setDragOverIndex(null);
+              }}
+              onDragLeave={(event) => {
+                const nextTarget = event.relatedTarget as Node | null;
+                if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+                  setDragOverIndex((current) => (current === cell.index ? null : current));
+                }
               }}
               onDragEnd={() => {
                 setDragIndex(null);
+                setDragOverIndex(null);
               }}
             >
               <header>
@@ -115,7 +141,7 @@ export default function ProgressionEditor({
                     Reharmonize
                   </button>
                   <button type="button" onClick={() => onDelete(cell.index)}>
-                    Delete
+                    Rest
                   </button>
                 </menu>
               )}

@@ -25,6 +25,7 @@ import { Note } from '@tonaljs/tonal';
 import { playSequence, setBpm, stopAll, primeAudioUnlock } from '../lib/audio';
 
 const FRET_SPAN = DEFAULT_FRET_SPAN;
+const DEFAULT_POSITION_INDEX = 1;
 
 function ScalesPage() {
   const [instrumentId, setInstrumentId] = useState<InstrumentId>('guitar');
@@ -32,7 +33,7 @@ function ScalesPage() {
   const [tuningId, setTuningId] = useState(initialInstrument.tunings[0]?.id ?? '');
   const [keyName, setKeyName] = useState(DEFAULT_KEY);
   const [scaleId, setScaleId] = useState(DEFAULT_SCALE_ID);
-  const [positionIndex, setPositionIndex] = useState(0);
+  const [positionIndex, setPositionIndex] = useState(DEFAULT_POSITION_INDEX);
   const [bpm, setBpmValue] = useState(70);
   const [loop, setLoop] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);

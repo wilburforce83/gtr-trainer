@@ -83,6 +83,7 @@ const MODE_TO_SCALE_ID: Partial<Record<ModeName, string>> = {
 };
 const tuningMidi = tuningToMidi(STANDARD_TUNING);
 
+const DEFAULT_SCALE_POSITION_INDEX = 1;
 const DEFAULT_SOLO_INSTRUMENT_ID: InstrumentId = 'guitar';
 const DEFAULT_SOLO_TUNING_ID = getInstrument(DEFAULT_SOLO_INSTRUMENT_ID).tunings[0]?.id ?? '';
 
@@ -112,7 +113,7 @@ export default function ChordsPage() {
   const [reverbAmount, setReverbAmountState] = useState(DEFAULT_REVERB);
   const [toneAmount, setToneAmountState] = useState(DEFAULT_TONE);
   const [tapeAmount, setTapeAmountState] = useState(DEFAULT_TAPE);
-  const [scalePositionIndex, setScalePositionIndex] = useState(0);
+  const [scalePositionIndex, setScalePositionIndex] = useState(DEFAULT_SCALE_POSITION_INDEX);
   const [soloInstrumentId, setSoloInstrumentId] = useState<InstrumentId>(DEFAULT_SOLO_INSTRUMENT_ID);
   const [soloTuningId, setSoloTuningId] = useState(DEFAULT_SOLO_TUNING_ID);
   const [ampProfileId, setAmpProfileId] = useState(AMP_PROFILES[0].id);
@@ -283,7 +284,7 @@ export default function ChordsPage() {
   }, [soloInstrument, soloTuningId]);
 
   useEffect(() => {
-    setScalePositionIndex(0);
+    setScalePositionIndex(DEFAULT_SCALE_POSITION_INDEX);
   }, [soloInstrumentId, soloTuningId]);
 
   const selectedCell = cells.find((cell) => cell.index === selectedIndex) ?? cells[0];
@@ -497,7 +498,7 @@ export default function ChordsPage() {
             </select>
           </label>
           <label>
-            Style
+            Genre
             <select value={style} onChange={(event) => setStyle(event.target.value as StyleName)}>
               {STYLE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -505,6 +506,16 @@ export default function ChordsPage() {
                 </option>
               ))}
             </select>
+          </label>
+          <label>
+            BPM
+            <input
+              type="number"
+              value={bpm}
+              min={40}
+              max={220}
+              onChange={(event) => setBpm(Number(event.target.value))}
+            />
           </label>
         </div>
         <div className="controls-right">
@@ -663,10 +674,8 @@ export default function ChordsPage() {
           </div>
           <div className="transport-pane">
             <Transport
-              bpm={bpm}
               loop={loop}
               isPlaying={isPlaying}
-              onBpmChange={setBpm}
               onPlay={handlePlay}
               onStop={handleStop}
               onToggleLoop={setLoop}

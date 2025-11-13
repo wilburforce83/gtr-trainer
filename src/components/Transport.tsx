@@ -1,10 +1,8 @@
 type StrumMode = 'arpeggio' | 'strum' | 'picked';
 
 type Props = {
-  bpm: number;
   loop: boolean;
   isPlaying: boolean;
-  onBpmChange(value: number): void;
   onPlay(): void;
   onStop(): void;
   onToggleLoop(value: boolean): void;
@@ -31,10 +29,8 @@ type Props = {
 const MODE_OPTIONS: StrumMode[] = ['arpeggio', 'strum', 'picked'];
 
 export default function Transport({
-  bpm,
   loop,
   isPlaying,
-  onBpmChange,
   onPlay,
   onStop,
   onToggleLoop,
@@ -60,16 +56,6 @@ export default function Transport({
   return (
     <div className="transport-bar">
       <div className="transport-header">
-        <label>
-          BPM
-          <input
-            type="number"
-            value={bpm}
-            min={40}
-            max={220}
-            onChange={(event) => onBpmChange(Number(event.target.value))}
-          />
-        </label>
         <div className="transport-actions">
           {!isPlaying && (
             <button type="button" className="primary" onClick={onPlay}>
