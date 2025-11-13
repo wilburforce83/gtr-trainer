@@ -1,4 +1,5 @@
 import HeroCard from '../components/HeroCard';
+import SupportButton from '../components/SupportButton';
 
 export default function Home() {
   return (
@@ -27,6 +28,10 @@ export default function Home() {
           cta="Build Progressions"
           to="/chords"
         />
+      </section>
+
+      <section className="home-support">
+        <SupportButton variant="solid" label="Buy me a coffee" />
       </section>
 
       <section className="home-attributions">

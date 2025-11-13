@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Chord, Note } from '@tonaljs/tonal';
 import BackButton from '../components/BackButton';
+import SupportButton from '../components/SupportButton';
 import ProgressionEditor from '../components/ProgressionEditor';
 import ChordList from '../components/ChordList';
 import Transport from '../components/Transport';
@@ -493,11 +494,14 @@ export default function ChordsPage() {
   return (
     <div className="chords-shell">
       <header className="page-header">
-        <BackButton />
-        <div className="page-heading">
-          <p className="eyebrow">Chord Progressions</p>
-          <p className="page-title">Generate genre-aware progressions with adaptive voicings.</p>
+        <div className="page-header__stack">
+          <BackButton />
+          <div className="page-heading">
+            <p className="eyebrow">Chord Progressions</p>
+            <p className="page-title">Generate genre-aware progressions with adaptive voicings.</p>
+          </div>
         </div>
+        <SupportButton className="page-ko-fi" />
       </header>
 
       <section className="chords-controls">

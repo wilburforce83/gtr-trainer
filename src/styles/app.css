@@ -33,6 +33,17 @@ body {
   align-items: center;
   gap: 1rem;
   padding-bottom: 0.5rem;
+  justify-content: space-between;
+}
+
+.page-header__stack {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.page-ko-fi {
+  margin-left: auto;
 }
 
 .back-button {
@@ -45,6 +56,30 @@ body {
   gap: 0.4rem;
   align-items: center;
   color: #f8fafc;
+}
+
+.support-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: #f8fafc;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: rgba(15, 23, 42, 0.85);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+  transition: transform 120ms ease;
+}
+
+.support-button:hover {
+  transform: translateY(-1px);
+}
+
+.support-button--solid {
+  background: linear-gradient(120deg, #f97316, #e11d48);
+  border-color: transparent;
 }
 
 .eyebrow {
@@ -79,6 +114,11 @@ body {
   flex-direction: column;
   gap: 2rem;
   background: radial-gradient(circle at top, rgba(59, 130, 246, 0.25), transparent 60%);
+}
+
+.home-support {
+  display: flex;
+  justify-content: center;
 }
 
 .home-hero {
@@ -779,6 +819,69 @@ body {
   font-size: 1rem;
   font-weight: 600;
   color: #f8fafc;
+}
+
+.support-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 999;
+}
+
+.support-modal {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 18px;
+  padding: 1.5rem;
+  max-width: 420px;
+  width: min(100%, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: relative;
+}
+
+.support-modal .close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.cookie-notice {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  background: rgba(2, 6, 23, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  max-width: 340px;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  z-index: 998;
+}
+
+.cookie-notice p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #cbd5f5;
+}
+
+.cookie-notice button {
+  background: #38bdf8;
+  color: #020617;
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .transport-pane {

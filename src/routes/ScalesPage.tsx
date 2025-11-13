@@ -4,6 +4,7 @@ import FretboardView from '../components/FretboardView';
 import TabView from '../components/TabView';
 import Toolbar from '../components/Toolbar';
 import BackButton from '../components/BackButton';
+import SupportButton from '../components/SupportButton';
 import {
   DEFAULT_FRET_SPAN,
   INSTRUMENTS,
@@ -122,11 +123,14 @@ function ScalesPage() {
   return (
     <div className="app-shell">
       <header className="page-header">
-        <BackButton />
-        <div className="page-heading">
-          <p className="eyebrow">Scales Trainer</p>
-          <p className="page-title">Visualize every position across the neck.</p>
+        <div className="page-header__stack">
+          <BackButton />
+          <div className="page-heading">
+            <p className="eyebrow">Scales Trainer</p>
+            <p className="page-title">Visualize every position across the neck.</p>
+          </div>
         </div>
+        <SupportButton className="page-ko-fi" />
       </header>
 
       <Controls
