@@ -4,6 +4,9 @@ export interface ControlsProps {
   instruments: Array<{ id: string; label: string }>;
   instrumentId: string;
   onInstrumentChange: (id: string) => void;
+  tuningOptions: Array<{ id: string; label: string }>;
+  tuningId: string;
+  onTuningChange: (id: string) => void;
   keys: string[];
   keyName: string;
   onKeyChange: (key: string) => void;
@@ -28,6 +31,9 @@ export function Controls({
   instruments,
   instrumentId,
   onInstrumentChange,
+  tuningOptions,
+  tuningId,
+  onTuningChange,
   keys,
   keyName,
   onKeyChange,
@@ -57,6 +63,16 @@ export function Controls({
             {instruments.map((instrument) => (
               <option key={instrument.id} value={instrument.id}>
                 {instrument.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Tuning
+          <select value={tuningId} onChange={(event) => onTuningChange(event.target.value)}>
+            {tuningOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
               </option>
             ))}
           </select>

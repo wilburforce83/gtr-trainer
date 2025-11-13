@@ -5,9 +5,11 @@ import TabView from '../components/TabView';
 import Toolbar from '../components/Toolbar';
 import BackButton from '../components/BackButton';
 import {
+  DEFAULT_FRET_SPAN,
   INSTRUMENTS,
   buildInstrumentScaleData,
   getInstrument,
+  getInstrumentTuning,
   type InstrumentId,
 } from '../lib/instrumentScales';
 import {
@@ -22,8 +24,12 @@ import {
 import { Note } from '@tonaljs/tonal';
 import { playSequence, setBpm, stopAll, primeAudioUnlock } from '../lib/audio';
 
+const FRET_SPAN = DEFAULT_FRET_SPAN;
+
 function ScalesPage() {
   const [instrumentId, setInstrumentId] = useState<InstrumentId>('guitar');
+  const initialInstrument = getInstrument('guitar');
+  const [tuningId, setTuningId] = useState(initialInstrument.tunings[0]?.id ?? '');
   const [keyName, setKeyName] = useState(DEFAULT_KEY);
   const [scaleId, setScaleId] = useState(DEFAULT_SCALE_ID);
   const [positionIndex, setPositionIndex] = useState(0);
@@ -35,16 +41,26 @@ function ScalesPage() {
   const tabRef = useRef<HTMLDivElement>(null);
 
   const instrument = useMemo(() => getInstrument(instrumentId), [instrumentId]);
+  const tuning = useMemo(() => getInstrumentTuning(instrument, tuningId), [instrument, tuningId]);
+
+  useEffect(() => {
+    if (!instrument.tunings.some((option) => option.id === tuningId)) {
+      setTuningId(instrument.tunings[0]?.id ?? '');
+    }
+  }, [instrument, tuningId]);
+
   const scaleDef: ScaleDef = useMemo(() => getScaleById(scaleId), [scaleId]);
 
   const { markers, highlightIds, sequence, tuningNotes, windows, clampedPositionIndex } = useMemo(() => {
     return buildInstrumentScaleData({
       instrument,
+      tuning,
       key: keyName,
       scale: scaleDef,
       positionIndex,
+      fretSpan: FRET_SPAN,
     });
-  }, [instrument, keyName, scaleDef, positionIndex]);
+  }, [instrument, tuning, keyName, scaleDef, positionIndex]);
 
   useEffect(() => {
     if (clampedPositionIndex !== positionIndex) {
@@ -116,6 +132,9 @@ function ScalesPage() {
         instruments={INSTRUMENTS}
         instrumentId={instrumentId}
         onInstrumentChange={(value) => setInstrumentId(value as InstrumentId)}
+        tuningOptions={instrument.tunings.map((option) => ({ id: option.id, label: option.label }))}
+        tuningId={tuningId}
+        onTuningChange={setTuningId}
         keys={KEY_OPTIONS}
         keyName={keyName}
         onKeyChange={setKeyName}
