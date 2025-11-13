@@ -152,10 +152,27 @@ export const SCALES: ScaleDef[] = [
 ];
 
 const SCALE_LOOKUP = new Map<string, ScaleDef>();
+
+function registerScaleKey(key: string, scale: ScaleDef) {
+  if (!key) {
+    return;
+  }
+  const lower = key.toLowerCase();
+  SCALE_LOOKUP.set(lower, scale);
+  const compact = lower.replace(/[^a-z0-9]/g, '');
+  if (compact && compact !== lower) {
+    SCALE_LOOKUP.set(compact, scale);
+  }
+  const stripped = lower.replace(/\([^)]*\)/g, '').trim();
+  if (stripped && stripped !== lower) {
+    SCALE_LOOKUP.set(stripped, scale);
+  }
+}
+
 SCALES.forEach((scale) => {
-  SCALE_LOOKUP.set(scale.name, scale);
-  SCALE_LOOKUP.set(scale.id, scale);
-  scale.alias?.forEach((alias) => SCALE_LOOKUP.set(alias, scale));
+  registerScaleKey(scale.id, scale);
+  registerScaleKey(scale.name, scale);
+  scale.alias?.forEach((alias) => registerScaleKey(alias, scale));
 });
 
 export const DEFAULT_SCALE_ID = 'minorPentatonic';
@@ -176,12 +193,19 @@ export const KEY_OPTIONS = [
   'B',
 ];
 
+export function findScale(key: string): ScaleDef | null {
+  if (!key) {
+    return null;
+  }
+  return SCALE_LOOKUP.get(key.toLowerCase()) ?? null;
+}
+
 export function getScaleByName(name: string): ScaleDef {
-  return SCALE_LOOKUP.get(name) ?? SCALE_LOOKUP.get(DEFAULT_SCALE_ID)!;
+  return findScale(name) ?? SCALE_LOOKUP.get(DEFAULT_SCALE_ID)!;
 }
 
 export function getScaleById(id: string): ScaleDef {
-  return SCALE_LOOKUP.get(id) ?? SCALE_LOOKUP.get(DEFAULT_SCALE_ID)!;
+  return findScale(id) ?? SCALE_LOOKUP.get(DEFAULT_SCALE_ID)!;
 }
 
 export function normalizeKey(input: string): string {

@@ -1,23 +1,427 @@
 import { Note, Scale } from '@tonaljs/tonal';
-import { getStylePack } from './styles';
 import type {
   GenerateProgressionParams,
   HarmonicFunction,
   HarmonyCell,
   HarmonyContext,
-  StylePack,
+  StyleName,
 } from './types';
+import { findScale } from '../scales';
 
-const MODE_ALIASES: Record<string, string> = {
-  ionian: 'major',
-  major: 'major',
-  aeolian: 'natural minor',
-  'natural minor': 'natural minor',
-  dorian: 'dorian',
-  'melodic minor': 'melodic minor',
-  'harmonic minor': 'harmonic minor',
-  mixolydian: 'mixolydian',
+const CELLS_PER_BAR = 2;
+const DEFAULT_REST_PROBABILITY: Record<StyleName, number> = {
+  pop: 0.12,
+  lofi: 0.2,
+  'neo-soul': 0.18,
+  blues: 0.05,
 };
+const IS_DEV = typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV);
+
+export type RomanDegree =
+  | 'I'
+  | 'ii'
+  | 'iii'
+  | 'IV'
+  | 'V'
+  | 'vi'
+  | 'vii°'
+  | 'I7'
+  | 'IV7'
+  | 'V7'
+  | 'iv';
+
+type ChordFamily = 'major' | 'minor' | 'dominant' | 'diminished';
+
+export type ChordSlot =
+  | { type: 'chord'; barIndex: number; degree: RomanDegree; chord: ChordSpec }
+  | { type: 'rest'; barIndex: number };
+
+type ChordSpec = {
+  root: string;
+  suffix: string;
+  family: ChordFamily;
+  symbol: string;
+};
+
+type ProgressionTemplate = {
+  id: string;
+  name: string;
+  genre: StyleName;
+  degrees: RomanDegree[];
+};
+
+type GeneratedPlan = {
+  template: ProgressionTemplate;
+  barDegrees: RomanDegree[];
+  slots: ChordSlot[];
+};
+
+const PROGRESSION_TEMPLATES: ProgressionTemplate[] = [
+  // Pop
+  { id: 'pop_1', name: 'Axis progression', genre: 'pop', degrees: ['I', 'V', 'vi', 'IV'] },
+  { id: 'pop_2', name: '50s / doo-wop', genre: 'pop', degrees: ['I', 'vi', 'IV', 'V'] },
+  { id: 'pop_3', name: 'Sensitive minor start', genre: 'pop', degrees: ['vi', 'IV', 'I', 'V'] },
+  { id: 'pop_4', name: 'Classic rock loop', genre: 'pop', degrees: ['I', 'IV', 'V', 'IV'] },
+  { id: 'pop_5', name: 'Pre-chorus lift', genre: 'pop', degrees: ['I', 'IV', 'ii', 'V'] },
+  { id: 'pop_6', name: 'Anthemic rise', genre: 'pop', degrees: ['I', 'V', 'IV', 'V'] },
+  { id: 'pop_7', name: 'Wistful lift', genre: 'pop', degrees: ['IV', 'I', 'V', 'vi'] },
+  { id: 'pop_8', name: 'Emotional pop', genre: 'pop', degrees: ['I', 'iii', 'vi', 'IV'] },
+  // Lo-fi
+  { id: 'lofi_1', name: 'Soft circular', genre: 'lofi', degrees: ['I', 'vi', 'ii', 'V'] },
+  { id: 'lofi_2', name: 'Jazz slip', genre: 'lofi', degrees: ['ii', 'V', 'I', 'vi'] },
+  { id: 'lofi_3', name: 'Emotional loop', genre: 'lofi', degrees: ['vi', 'IV', 'I', 'V'] },
+  { id: 'lofi_4', name: 'Rising inner line', genre: 'lofi', degrees: ['I', 'IV', 'iii', 'vi'] },
+  { id: 'lofi_5', name: 'Drifty IV', genre: 'lofi', degrees: ['I', 'V', 'IV', 'IV'] },
+  { id: 'lofi_6', name: 'Gentle cadence', genre: 'lofi', degrees: ['IV', 'I', 'ii', 'V'] },
+  { id: 'lofi_7', name: 'Open cadence', genre: 'lofi', degrees: ['ii', 'IV', 'I', 'V'] },
+  { id: 'lofi_8', name: 'Borrowed iv color', genre: 'lofi', degrees: ['I', 'IV', 'iv', 'I'] },
+  // Neo-soul
+  { id: 'neo_1', name: 'Neo classic', genre: 'neo-soul', degrees: ['I', 'vi', 'IV', 'V'] },
+  { id: 'neo_2', name: 'ii–V–I slip', genre: 'neo-soul', degrees: ['ii', 'V', 'I', 'vi'] },
+  { id: 'neo_3', name: 'Circle run', genre: 'neo-soul', degrees: ['iii', 'vi', 'ii', 'V'] },
+  { id: 'neo_4', name: 'Gospel lean', genre: 'neo-soul', degrees: ['I', 'IV', 'ii', 'V'] },
+  { id: 'neo_5', name: 'Minor start', genre: 'neo-soul', degrees: ['vi', 'IV', 'I', 'V'] },
+  { id: 'neo_6', name: 'Borrowed iv', genre: 'neo-soul', degrees: ['IV', 'iv', 'I', 'V'] },
+  { id: 'neo_7', name: 'Smooth cadence', genre: 'neo-soul', degrees: ['ii', 'V', 'vi', 'IV'] },
+  { id: 'neo_8', name: 'Upper motion', genre: 'neo-soul', degrees: ['I', 'V', 'vi', 'iii'] },
+  { id: 'neo_9', name: 'Energy climb', genre: 'neo-soul', degrees: ['I', 'iii', 'vi', 'ii'] },
+  { id: 'neo_10', name: 'Bump finish', genre: 'neo-soul', degrees: ['I', 'IV', 'V', 'iii'] },
+  // Blues
+  { id: 'blues_1', name: 'I7 stay', genre: 'blues', degrees: ['I7', 'I7', 'IV7', 'I7'] },
+  { id: 'blues_2', name: 'Quick change', genre: 'blues', degrees: ['I7', 'IV7', 'I7', 'V7'] },
+  { id: 'blues_3', name: 'Drive', genre: 'blues', degrees: ['I7', 'IV7', 'V7', 'IV7'] },
+  { id: 'blues_4', name: 'Turnaround', genre: 'blues', degrees: ['I7', 'I7', 'IV7', 'V7'] },
+  { id: 'blues_5', name: 'Simple loop', genre: 'blues', degrees: ['I7', 'IV7', 'I7', 'I7'] },
+];
+
+export function listGenreDegrees(genre: StyleName): RomanDegree[] {
+  const degrees = new Set<RomanDegree>();
+  PROGRESSION_TEMPLATES.forEach((template) => {
+    if (template.genre === genre) {
+      template.degrees.forEach((degree) => degrees.add(degree));
+    }
+  });
+  return Array.from(degrees);
+}
+
+export function buildChordSymbolForDegree({
+  key,
+  mode,
+  degree,
+  genre,
+  humanise = false,
+}: {
+  key: string;
+  mode: string;
+  degree: RomanDegree;
+  genre: StyleName;
+  humanise?: boolean;
+}): string {
+  return mapRomanToChord({ key, mode, degree, genre, humanise }).symbol;
+}
+
+export function generateProgression(params: GenerateProgressionParams): HarmonyCell[] {
+  const { key, mode, bars, style, resolution, lockedMap = {} } = params;
+  const cellsPerBar = resolution === '1/2' ? CELLS_PER_BAR : 1;
+  const plan = buildChordPlan({
+    key,
+    mode,
+    genre: style,
+    bars,
+    restProbability: DEFAULT_REST_PROBABILITY[style] ?? 0,
+    humanise: false,
+  });
+
+  logPlan(plan);
+
+  const totalCells = bars * cellsPerBar;
+  const result: HarmonyCell[] = [];
+
+  for (let index = 0; index < totalCells; index += 1) {
+    const locked = lockedMap[index];
+    if (locked) {
+      result.push({ ...locked, index, locked: true });
+      continue;
+    }
+    const slot = plan.slots[index];
+    if (!slot || slot.type === 'rest') {
+      result.push({
+        index,
+        roman: '—',
+        symbol: 'Rest',
+        func: 'T',
+      });
+      continue;
+    }
+    const romanCore = stripRomanDegree(slot.degree);
+    const func = detectFunction(romanCore, mode);
+    result.push({
+      index,
+      roman: slot.degree,
+      symbol: slot.chord.symbol,
+      func,
+    });
+  }
+
+  return result;
+}
+
+export function reharmonizeCell(cell: HarmonyCell, context: HarmonyContext): HarmonyCell {
+  const { style, key, mode } = context;
+  const barIndex = Math.floor(cell.index / CELLS_PER_BAR);
+  const plan = buildChordPlan({
+    key,
+    mode,
+    genre: style,
+    bars: Math.max(barIndex + 1, 4),
+    restProbability: 0,
+    humanise: false,
+  });
+  const degree = plan.barDegrees[barIndex] ?? plan.barDegrees[0];
+  const scaleNotes = getScaleNotes(key, mode);
+  const chord = mapRomanToChord({
+    key,
+    mode,
+    degree,
+    genre: style,
+    humanise: false,
+    scaleNotes,
+  });
+  return {
+    index: cell.index,
+    roman: degree,
+    symbol: chord.symbol,
+    func: detectFunction(stripRomanDegree(degree), mode),
+    locked: cell.locked,
+  };
+}
+
+export function humanizeChordCells(cells: HarmonyCell[], genre: StyleName): HarmonyCell[] {
+  return cells.map((cell) => {
+    if (cell.symbol === 'Rest') {
+      return cell;
+    }
+    if (!isRomanDegree(cell.roman)) {
+      return cell;
+    }
+    const root = extractRootFromSymbol(cell.symbol);
+    if (!root) {
+      return cell;
+    }
+    const family = classifyChordFamily(cell.roman);
+    const suffix = pickHumanisedSuffix(family, genre, defaultSuffixForFamily(family));
+    return { ...cell, symbol: `${root}${suffix}` };
+  });
+}
+
+type BuildPlanOptions = {
+  key: string;
+  mode: string;
+  genre: StyleName;
+  bars: number;
+  restProbability: number;
+  humanise: boolean;
+};
+
+function buildChordPlan(options: BuildPlanOptions): GeneratedPlan {
+  const { key, mode, genre, bars, restProbability, humanise } = options;
+  const candidates = PROGRESSION_TEMPLATES.filter((template) => template.genre === genre);
+  const template = pickRandom(candidates.length ? candidates : PROGRESSION_TEMPLATES);
+  const barDegrees = expandDegrees(template.degrees, bars);
+  const scaleNotes = getScaleNotes(key, mode);
+  const slots: ChordSlot[] = [];
+
+  barDegrees.forEach((degree, barIndex) => {
+    const chord = mapRomanToChord({
+      key,
+      mode,
+      degree,
+      genre,
+      humanise,
+      scaleNotes,
+    });
+    const chordSlot: ChordSlot = {
+      type: 'chord',
+      barIndex,
+      degree,
+      chord,
+    };
+    const restSlot: ChordSlot =
+      restProbability > 0 && Math.random() < restProbability
+        ? { type: 'rest', barIndex }
+        : {
+            type: 'chord',
+            barIndex,
+            degree,
+            chord,
+          };
+    slots.push(chordSlot, restSlot);
+  });
+
+  return { template, barDegrees, slots };
+}
+
+function mapRomanToChord({
+  key,
+  mode,
+  degree,
+  genre,
+  humanise,
+  scaleNotes,
+}: {
+  key: string;
+  mode: string;
+  degree: RomanDegree;
+  genre: StyleName;
+  humanise: boolean;
+  scaleNotes?: string[];
+}): ChordSpec {
+  const notes = scaleNotes ?? getScaleNotes(key, mode);
+  const romanCore = stripRomanDegree(degree);
+  const root = romanToPitch(romanCore, notes);
+  const family = classifyChordFamily(degree);
+  const baseSuffix = defaultSuffixForFamily(family);
+  const suffix = humanise ? pickHumanisedSuffix(family, genre, baseSuffix) : baseSuffix;
+  return {
+    root,
+    suffix,
+    family,
+    symbol: `${root}${suffix}`,
+  };
+}
+
+function expandDegrees(degrees: RomanDegree[], bars: number): RomanDegree[] {
+  const result: RomanDegree[] = [];
+  while (result.length < bars) {
+    result.push(...degrees);
+  }
+  return result.slice(0, bars);
+}
+
+function pickHumanisedSuffix(family: ChordFamily, genre: StyleName, fallback: string): string {
+  const table = HUMANISE_SUFFIXES[genre]?.[family] ?? [];
+  if (!table.length) {
+    return fallback;
+  }
+  return pickRandom(table);
+}
+
+const HUMANISE_SUFFIXES: Record<StyleName, Record<ChordFamily, string[]>> = {
+  pop: {
+    major: ['maj7', '6/9', 'maj9'],
+    minor: ['m7', 'm9', 'm11'],
+    dominant: ['7', '9', 'sus2', 'sus4'],
+    diminished: ['m7b5'],
+  },
+  lofi: {
+    major: ['maj7', 'maj9', '6/9', 'maj9#11'],
+    minor: ['m7', 'm9', 'm11'],
+    dominant: ['9sus4', '7', '13'],
+    diminished: ['m7b5'],
+  },
+  'neo-soul': {
+    major: ['maj9', 'maj9#11', '6/9'],
+    minor: ['m9', 'm11', 'm13'],
+    dominant: ['13', '9', '7b9', '7#9'],
+    diminished: ['m7b5'],
+  },
+  blues: {
+    major: ['6/9', 'maj7'],
+    minor: ['m7', 'm9'],
+    dominant: ['7', '9', '13'],
+    diminished: ['m7b5'],
+  },
+};
+
+function classifyChordFamily(degree: RomanDegree): ChordFamily {
+  if (degree.endsWith('7')) {
+    return 'dominant';
+  }
+  if (degree.includes('°')) {
+    return 'diminished';
+  }
+  const core = stripRomanDegree(degree);
+  return core === core.toLowerCase() ? 'minor' : 'major';
+}
+
+function defaultSuffixForFamily(family: ChordFamily): string {
+  switch (family) {
+    case 'major':
+      return 'maj7';
+    case 'minor':
+      return 'm7';
+    case 'dominant':
+      return '7';
+    case 'diminished':
+    default:
+      return 'm7b5';
+  }
+}
+
+function stripRomanDegree(degree: RomanDegree): string {
+  return degree.replace(/7$/, '').replace(/°$/, '');
+}
+
+function isRomanDegree(value: string): value is RomanDegree {
+  return PROGRESSION_TEMPLATES.some((template) => template.degrees.includes(value as RomanDegree));
+}
+
+function extractRootFromSymbol(symbol: string): string | null {
+  const match = symbol.match(/^([A-G][b#]?)/i);
+  return match ? match[1] : null;
+}
+
+function logPlan(plan: GeneratedPlan): void {
+  if (!IS_DEV) {
+    return;
+  }
+  const slotSummary = plan.slots.map((slot, index) => {
+    if (slot.type === 'rest') {
+      return { slot: index, bar: slot.barIndex + 1, value: 'Rest' };
+    }
+    return { slot: index, bar: slot.barIndex + 1, value: `${slot.degree} (${slot.chord.symbol})` };
+  });
+  // eslint-disable-next-line no-console
+  console.groupCollapsed?.(`[ChordGen] ${plan.template.genre} – ${plan.template.name}`);
+  // eslint-disable-next-line no-console
+  console.info?.('Degrees:', plan.barDegrees.join(' · '));
+  // eslint-disable-next-line no-console
+  console.table?.(slotSummary);
+  // eslint-disable-next-line no-console
+  console.groupEnd?.();
+}
+
+function getScaleNotes(key: string, mode: string): string[] {
+  const normalizedKey = Note.pitchClass(key) ?? key;
+  const scaleDef = findScale(mode) ?? findScale(mode.replace(/\s+/g, ''));
+  if (scaleDef) {
+    return buildNotesFromIntervals(normalizedKey, scaleDef.intervals);
+  }
+  const descriptor = `${normalizedKey} ${mode}`;
+  const result = Scale.get(descriptor);
+  if (result.empty || !result.notes.length) {
+    const fallback = Scale.get(`${normalizedKey} major`);
+    return fallback.notes.map((note) => Note.pitchClass(note) ?? note);
+  }
+  return result.notes.map((note) => Note.pitchClass(note) ?? note);
+}
+
+function buildNotesFromIntervals(root: string, intervals: number[]): string[] {
+  const normalizedRoot = Note.pitchClass(root) ?? root;
+  const baseMidi = Note.midi(`${normalizedRoot}3`) ?? Note.midi(`${normalizedRoot}4`) ?? 60;
+  return intervals.map((interval) => {
+    const note = Note.fromMidi(baseMidi + interval) ?? normalizedRoot;
+    return Note.pitchClass(note) ?? note;
+  });
+}
+
+function romanToPitch(roman: string, scaleNotes: string[]): string {
+  const degree = ROMAN_TO_DEGREE[roman.toUpperCase()] ?? 0;
+  const base = scaleNotes[degree] ?? scaleNotes[0];
+  const midi = Note.midi(`${base}3`) ?? Note.midi(`${base}4`) ?? 60;
+  const note = Note.fromMidi(midi) ?? base;
+  return Note.pitchClass(note) ?? base;
+}
 
 const ROMAN_TO_DEGREE: Record<string, number> = {
   I: 0,
@@ -29,360 +433,18 @@ const ROMAN_TO_DEGREE: Record<string, number> = {
   VII: 6,
 };
 
-const FUNCTION_FLOW: Record<HarmonicFunction, HarmonicFunction> = {
-  T: 'SD',
-  SD: 'D',
-  D: 'T',
-};
-
-export function generateProgression(params: GenerateProgressionParams): HarmonyCell[] {
-  const { key, mode, bars, style, resolution, lockedMap = {} } = params;
-  const pack = getStylePack(style);
-  const cellsPerBar = resolution === '1/2' ? 2 : 1;
-  const totalCells = bars * cellsPerBar;
-  const scaleNotes = getScaleNotes(key, mode);
-  const cadence = getCadence(mode);
-  const sequence: string[] = new Array(totalCells);
-  let prevState: string | null = null;
-
-  for (let i = 0; i < totalCells; i += 1) {
-    const locked = lockedMap[i];
-    if (locked) {
-      const lockedState = `${locked.roman}${extractSuffixFromSymbol(locked.symbol)}`;
-      sequence[i] = lockedState;
-      prevState = lockedState;
-      continue;
-    }
-    if (style === 'blues' && pack.templates?.length) {
-      break;
-    }
-    const nextState = chooseNextState({
-      index: i,
-      prevState,
-      pack,
-      mode,
-      cadence,
-      sequence,
-    });
-    sequence[i] = nextState;
-    prevState = nextState;
-  }
-
-  if (style === 'blues' && pack.templates?.length) {
-    const bluesSequence = buildBluesSequence(bars, cellsPerBar, pack);
-    bluesSequence.forEach((state, idx) => {
-      if (idx < totalCells && !sequence[idx]) {
-        sequence[idx] = state;
-      }
-    });
-  }
-
-  enforceCadence(sequence, cadence, lockedMap);
-
-  return sequence.map((state, index) => {
-    const resolvedState = state ?? 'Imaj7';
-    const locked = lockedMap[index];
-    if (locked) {
-      return { ...locked, index, locked: true };
-    }
-    return realizeState(resolvedState, index, { key, mode, pack, scaleNotes });
-  });
-}
-
-export function reharmonizeCell(cell: HarmonyCell, context: HarmonyContext): HarmonyCell {
-  const pack = getStylePack(context.style);
-  const scaleNotes = getScaleNotes(context.key, context.mode);
-  const transitionKey = resolveTransitionKey(cell.roman, pack);
-  const transitions = pack.transitions[transitionKey] ?? pack.start;
-  const candidates = Object.keys(transitions);
-  const state = candidates.length ? weightedPick(transitions) : cell.roman;
-  const realized = realizeState(state, cell.index, { key: context.key, mode: context.mode, pack, scaleNotes });
-  return { ...realized, locked: cell.locked };
-}
-
-function resolveTransitionKey(roman: string, pack: StylePack): string {
-  if (pack.transitions[roman]) {
-    return roman;
-  }
-  const entry = Object.keys(pack.transitions).find((state) => splitState(state).roman === roman);
-  return entry ?? roman;
-}
-
-function realizeState(
-  state: string,
-  index: number,
-  opts: { key: string; mode: string; pack: StylePack; scaleNotes: string[] },
-): HarmonyCell {
-  const { roman, suffix } = splitState(state);
-  const func = detectFunction(roman, opts.mode);
-  const extension = suffix || chooseExtension(func, opts.pack, index);
-  const root = romanToPitch(roman, opts.scaleNotes);
-  const symbol = buildSymbol(root, roman, extension, func);
-  return {
-    index,
-    roman,
-    symbol,
-    func,
-  };
-}
-
-function chooseNextState({
-  index,
-  prevState,
-  pack,
-  mode,
-  cadence,
-  sequence,
-}: {
-  index: number;
-  prevState: string | null;
-  pack: StylePack;
-  mode: string;
-  cadence: [string, string, string];
-  sequence: Array<string | undefined>;
-}): string {
-  const transitions = (prevState && pack.transitions[prevState]) || null;
-  const candidateEntries = transitions ? Object.entries(transitions) : Object.entries(pack.start);
-  if (!candidateEntries.length) {
-    return 'Imaj7';
-  }
-  const weighted: Record<string, number> = {};
-  candidateEntries.forEach(([state, weight]) => {
-    const probability = Math.max(weight || 0.001, 0.001);
-    let score = Math.log(probability);
-    score -= borrowPenalty(state, pack);
-    score -= repetitionPenalty(state, sequence, index);
-    score -= functionPenalty(prevState, state, mode);
-    score += cadenceReward(state, sequence, index, cadence);
-    score += Math.random() * 0.25;
-    const adjusted = Math.exp(score);
-    weighted[state] = Number.isFinite(adjusted) ? Math.max(adjusted, 0.0001) : 0.0001;
-  });
-  return weightedPick(weighted);
-}
-
-function buildBluesSequence(bars: number, cellsPerBar: number, pack: StylePack): string[] {
-  const template = pack.templates?.[Math.floor(Math.random() * pack.templates.length)] ?? [];
-  const barStates: string[] = [];
-  while (barStates.length < bars) {
-    barStates.push(...template);
-  }
-  const trimmedBars = barStates.slice(0, bars);
-  const cells: string[] = [];
-  trimmedBars.forEach((state) => {
-    for (let i = 0; i < cellsPerBar; i += 1) {
-      cells.push(state);
-    }
-  });
-  return cells;
-}
-
-function enforceCadence(sequence: string[], cadence: [string, string, string], lockedMap: Record<number, HarmonyCell>) {
-  if (hasCadence(sequence, cadence)) {
-    return;
-  }
-  for (let index = sequence.length - 3; index >= 0; index -= 1) {
-    if (canPlaceCadence(index, cadence, lockedMap)) {
-      sequence[index] = cadence[0];
-      sequence[index + 1] = cadence[1];
-      sequence[index + 2] = cadence[2];
-      return;
-    }
-  }
-}
-
-function hasCadence(sequence: string[], cadence: [string, string, string]): boolean {
-  for (let i = 0; i < sequence.length - 2; i += 1) {
-    if (sequence[i] === cadence[0] && sequence[i + 1] === cadence[1] && sequence[i + 2] === cadence[2]) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function canPlaceCadence(index: number, cadence: [string, string, string], locked: Record<number, HarmonyCell>): boolean {
-  for (let step = 0; step < cadence.length; step += 1) {
-    const candidateIndex = index + step;
-    if (locked[candidateIndex]?.locked) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function getCadence(mode: string): [string, string, string] {
-  if (isMinorMode(mode)) {
-    return ['ivm7', 'V7', 'im9'];
-  }
-  return ['ii7', 'V7', 'Imaj7'];
-}
-
-function borrowPenalty(state: string, pack: StylePack): number {
-  const roman = splitState(state).roman;
-  if (!/[b#]/.test(roman)) {
-    return 0;
-  }
-  if (pack.allowedBorrowed?.some((degree) => roman.toUpperCase().startsWith(degree.toUpperCase()))) {
-    return 0;
-  }
-  return 0.8;
-}
-
-function repetitionPenalty(state: string, sequence: Array<string | undefined>, index: number): number {
-  const prev = sequence[index - 1];
-  const prev2 = sequence[index - 2];
-  let penalty = 0;
-  if (prev === state) {
-    penalty += 0.4;
-  }
-  if (prev === state && prev2 === state) {
-    penalty += 0.6;
-  }
-  return penalty;
-}
-
-function functionPenalty(prev: string | null, next: string, mode: string): number {
-  if (!prev) {
-    return 0;
-  }
-  const prevFunc = detectFunction(splitState(prev).roman, mode);
-  const nextFunc = detectFunction(splitState(next).roman, mode);
-  if (prevFunc === nextFunc) {
-    return 0.15;
-  }
-  return FUNCTION_FLOW[prevFunc] === nextFunc ? -0.1 : 0.15;
-}
-
-function cadenceReward(state: string, sequence: Array<string | undefined>, index: number, cadence: [string, string, string]): number {
-  const prev = sequence[index - 1];
-  if (!prev) {
-    return 0;
-  }
-  if (prev === cadence[0] && state === cadence[1]) {
-    return 0.3;
-  }
-  if (prev === cadence[1] && state === cadence[2]) {
-    return 0.5;
-  }
-  return 0;
-}
-
-function romanToPitch(roman: string, scaleNotes: string[]): string {
-  const { accidental, letters } = splitRomanParts(roman);
-  const degree = ROMAN_TO_DEGREE[letters.toUpperCase()] ?? 0;
-  const base = scaleNotes[degree] ?? scaleNotes[0];
-  const octaveCandidates = [3, 4];
-  let baseMidi: number | null = null;
-  for (const octave of octaveCandidates) {
-    const midi = Note.midi(`${base}${octave}`);
-    if (typeof midi === 'number') {
-      baseMidi = midi;
-      break;
-    }
-  }
-  if (baseMidi === null) {
-    baseMidi = Note.midi(`${base}3`) ?? 48;
-  }
-  const delta = (accidental.match(/#/g)?.length ?? 0) - (accidental.match(/b/g)?.length ?? 0);
-  const note = Note.fromMidi(baseMidi + delta) ?? base;
-  return Note.pitchClass(note) ?? base;
-}
-
 function detectFunction(roman: string, mode: string): HarmonicFunction {
-  const { letters } = splitRomanParts(roman);
-  const degree = ROMAN_TO_DEGREE[letters.toUpperCase()];
+  const degree = ROMAN_TO_DEGREE[roman.toUpperCase()];
   if (degree === undefined) {
     return 'T';
   }
-  const isMajorish = !isMinorMode(mode);
-  const table: HarmonicFunction[] = isMajorish
+  const isMinorMode = ['aeolian', 'natural minor', 'dorian', 'melodic minor', 'harmonic minor'].includes(mode.toLowerCase());
+  const table: HarmonicFunction[] = isMinorMode
     ? ['T', 'SD', 'T', 'SD', 'D', 'T', 'D']
     : ['T', 'SD', 'T', 'SD', 'D', 'T', 'D'];
-  let func: HarmonicFunction = table[degree] ?? 'T';
-  if (/^V$/i.test(letters)) {
-    func = 'D';
-  }
-  if (/^[#b]/.test(roman) && degree === 6) {
-    func = isMajorish ? 'SD' : 'D';
-  }
-  return func;
+  return table[degree] ?? 'T';
 }
 
-function chooseExtension(func: HarmonicFunction, pack: StylePack, index: number): string {
-  const choices = pack.defaultExtensions[func] ?? [];
-  if (!choices.length) {
-    if (func === 'D') {
-      return '7';
-    }
-    return func === 'SD' ? 'm7' : 'maj7';
-  }
-  return choices[index % choices.length];
-}
-
-function buildSymbol(root: string, roman: string, extension: string, func: HarmonicFunction): string {
-  let suffix = extension;
-  const isMinorRoman = roman === roman.toLowerCase();
-  if (!suffix) {
-    suffix = func === 'D' ? '7' : isMinorRoman ? 'm7' : 'maj7';
-  }
-  if (isMinorRoman && !suffix.startsWith('m') && !suffix.startsWith('sus') && !suffix.startsWith('dim')) {
-    if (suffix.startsWith('maj')) {
-      suffix = suffix.replace(/^maj/, 'm');
-    } else {
-      suffix = `m${suffix}`;
-    }
-  }
-  return `${root}${suffix}`;
-}
-
-function getScaleNotes(key: string, mode: string): string[] {
-  const alias = MODE_ALIASES[mode.toLowerCase()] ?? 'major';
-  const descriptor = `${key} ${alias}`;
-  const result = Scale.get(descriptor);
-  if (result.empty || !result.notes.length) {
-    return Scale.get(`${key} major`).notes;
-  }
-  return result.notes.map((note) => Note.pitchClass(note) ?? note);
-}
-
-function splitState(state: string): { roman: string; suffix: string } {
-  const match = state.match(/^([b#]*[ivIV]+)(.*)$/);
-  if (!match) {
-    return { roman: state, suffix: '' };
-  }
-  return { roman: match[1], suffix: match[2] };
-}
-
-function splitRomanParts(roman: string): { accidental: string; letters: string } {
-  const match = roman.match(/^([b#]*)([ivIV]+)/);
-  if (!match) {
-    return { accidental: '', letters: roman };
-  }
-  return { accidental: match[1], letters: match[2] };
-}
-
-function extractSuffixFromSymbol(symbol: string): string {
-  const match = symbol.match(/^[A-G][b#]?/i);
-  if (!match) {
-    return '';
-  }
-  return symbol.slice(match[0].length);
-}
-
-function isMinorMode(mode: string): boolean {
-  return ['aeolian', 'natural minor', 'dorian', 'melodic minor', 'harmonic minor'].includes(mode.toLowerCase());
-}
-
-function weightedPick(weights: Record<string, number>): string {
-  const entries = Object.entries(weights);
-  const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
-  const target = Math.random() * total;
-  let cumulative = 0;
-  for (const [state, weight] of entries) {
-    cumulative += weight;
-    if (target <= cumulative) {
-      return state;
-    }
-  }
-  return entries[0]?.[0] ?? 'Imaj7';
+function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
 }

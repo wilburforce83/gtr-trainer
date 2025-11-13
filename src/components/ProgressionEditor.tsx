@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import type { HarmonyCell } from '../chords/types';
 
 type Props = {
@@ -25,6 +25,7 @@ export default function ProgressionEditor({
   const [menuIndex, setMenuIndex] = useState<number | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const cellRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     if (menuIndex === null) {
@@ -39,20 +40,101 @@ export default function ProgressionEditor({
 
   const cellsPerBar = bars ? Math.max(1, Math.round(cells.length / bars)) : 2;
 
+  useEffect(() => {
+    if (dragIndex === null) {
+      return;
+    }
+    const handleReset = () => {
+      setDragIndex(null);
+      setDragOverIndex(null);
+    };
+    window.addEventListener('dragend', handleReset);
+    window.addEventListener('drop', handleReset);
+    return () => {
+      window.removeEventListener('dragend', handleReset);
+      window.removeEventListener('drop', handleReset);
+    };
+  }, [dragIndex]);
+
+  const handleDrop = (targetIndex: number | null) => {
+    if (dragIndex !== null) {
+      const maxIndex = cells.length;
+      const clamped = Math.max(0, Math.min(targetIndex ?? dragIndex, maxIndex));
+      onMove(dragIndex, clamped);
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const updateDropIndex = (clientX: number) => {
+    if (dragIndex === null) {
+      return;
+    }
+    const entries = Array.from(cellRefs.current.entries()).sort((a, b) => a[0] - b[0]);
+    if (!entries.length) {
+      return;
+    }
+    for (const [index, node] of entries) {
+      const rect = node.getBoundingClientRect();
+      const midpoint = rect.left + rect.width / 2;
+      if (clientX < midpoint) {
+        if (dragOverIndex !== index) {
+          setDragOverIndex(index);
+        }
+        return;
+      }
+    }
+    const lastIndex = entries[entries.length - 1][0] + 1;
+    if (dragOverIndex !== lastIndex) {
+      setDragOverIndex(lastIndex);
+    }
+  };
+
+  const handleGridDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    updateDropIndex(event.clientX);
+  };
+
+  const registerCellRef = (index: number) => (node: HTMLDivElement | null) => {
+    if (node) {
+      cellRefs.current.set(index, node);
+    } else {
+      cellRefs.current.delete(index);
+    }
+  };
+
   return (
     <div className="progression-editor">
-      <div className="progression-grid" style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(120px, 1fr))` }}>
+      <div
+        className="progression-grid"
+        style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(120px, 1fr))` }}
+        onDragOver={handleGridDragOver}
+        onDrop={(event) => {
+          event.preventDefault();
+          handleDrop(dragOverIndex ?? dragIndex);
+        }}
+      >
         {cells.map((cell) => {
           const isSelected = selectedIndex === cell.index;
-          const isDragSource = dragIndex === cell.index;
-          const isDragHover = dragIndex !== null && dragOverIndex === cell.index && dragIndex !== cell.index;
-          const dragDirection = isDragHover ? (dragIndex! < cell.index ? 'forward' : 'backward') : null;
+          const dragTarget = dragOverIndex ?? dragIndex;
+          const movingForward = dragIndex !== null && dragTarget !== null && dragTarget > dragIndex;
+          const movingBackward = dragIndex !== null && dragTarget !== null && dragTarget < dragIndex;
+          const shouldShiftForward =
+            movingForward && dragIndex !== null && dragTarget !== null && cell.index > dragIndex && cell.index <= dragTarget;
+          const shouldShiftBackward =
+            movingBackward && dragIndex !== null && dragTarget !== null && cell.index >= dragTarget && cell.index < dragIndex;
+          const isDropBefore = dragOverIndex !== null && dragOverIndex === cell.index;
+          const isDropAfter =
+            dragOverIndex !== null && dragOverIndex >= cells.length && cell.index === cells.length - 1;
           const classNames = [
             'progression-cell',
             isSelected ? 'selected' : '',
             cell.locked ? 'locked' : '',
-            isDragSource ? 'drag-source' : '',
-            isDragHover && dragDirection ? `drag-over drag-over-${dragDirection}` : '',
+            dragIndex === cell.index ? 'drag-source' : '',
+            shouldShiftForward ? 'shift-forward' : '',
+            shouldShiftBackward ? 'shift-backward' : '',
+            isDropBefore ? 'drop-before' : '',
+            isDropAfter ? 'drop-after' : '',
           ]
             .filter(Boolean)
             .join(' ');
@@ -60,6 +142,7 @@ export default function ProgressionEditor({
           return (
             <div
               key={cell.index}
+              ref={registerCellRef(cell.index)}
               className={classNames}
               role="button"
               tabIndex={0}
@@ -76,27 +159,6 @@ export default function ProgressionEditor({
                 event.dataTransfer.effectAllowed = 'move';
                 setDragIndex(cell.index);
                 setDragOverIndex(cell.index);
-              }}
-              onDragOver={(event) => {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-                if (dragOverIndex !== cell.index) {
-                  setDragOverIndex(cell.index);
-                }
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (dragIndex !== null && dragIndex !== cell.index) {
-                  onMove(dragIndex, cell.index);
-                }
-                setDragIndex(null);
-                setDragOverIndex(null);
-              }}
-              onDragLeave={(event) => {
-                const nextTarget = event.relatedTarget as Node | null;
-                if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
-                  setDragOverIndex((current) => (current === cell.index ? null : current));
-                }
               }}
               onDragEnd={() => {
                 setDragIndex(null);

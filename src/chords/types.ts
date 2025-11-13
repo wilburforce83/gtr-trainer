@@ -9,8 +9,22 @@ export type ModeName =
   | 'natural minor'
   | 'dorian'
   | 'melodic minor'
+  | 'melodicMinor'
   | 'harmonic minor'
-  | 'mixolydian';
+  | 'harmonicMinor'
+  | 'mixolydian'
+  | 'phrygian'
+  | 'lydian'
+  | 'locrian'
+  | 'minorPentatonic'
+  | 'majorPentatonic'
+  | 'bluesHexatonic'
+  | 'wholeTone'
+  | 'diminishedHW'
+  | 'diminishedWH'
+  | 'chromatic'
+  | 'bebopDominant'
+  | 'bebopMajor';
 
 export type HarmonicFunction = 'T' | 'SD' | 'D';
 

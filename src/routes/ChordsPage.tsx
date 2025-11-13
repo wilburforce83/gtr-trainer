@@ -7,6 +7,10 @@ import Transport from '../components/Transport';
 import {
   generateProgression,
   reharmonizeCell as reharmonizeHarmonyCell,
+  humanizeChordCells,
+  listGenreDegrees,
+  buildChordSymbolForDegree,
+  type RomanDegree,
 } from '../chords/harmony';
 import type { HarmonyCell, ModeName, StyleName } from '../chords/types';
 import type { Voicing } from '../chords/voicings';
@@ -29,7 +33,7 @@ import {
 } from '../chords/audio';
 import { renderChordDiagram } from '../chords/svguitar';
 import FretboardView from '../components/FretboardView';
-import { getScaleById } from '../scales';
+import { SCALES, getScaleById, type ScaleDef } from '../scales';
 import {
   INSTRUMENTS,
   buildInstrumentScaleData,
@@ -42,14 +46,11 @@ import { STANDARD_TUNING, tuningToMidi } from '../lib/neck';
 const STORAGE_KEY = 'gtr-chords-state-v1';
 const RESOLUTION = '1/2';
 const KEY_OPTIONS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
-const MODE_OPTIONS: Array<{ value: ModeName; label: string }> = [
-  { value: 'ionian', label: 'Major / Ionian' },
-  { value: 'aeolian', label: 'Natural Minor / Aeolian' },
-  { value: 'dorian', label: 'Dorian' },
-  { value: 'melodic minor', label: 'Melodic Minor' },
-  { value: 'harmonic minor', label: 'Harmonic Minor' },
-  { value: 'mixolydian', label: 'Mixolydian' },
-];
+const DEFAULT_CHORD_SCALE_ID: ModeName = 'ionian';
+const SCALE_OPTIONS: Array<{ value: ModeName; label: string }> = SCALES.map((scale) => ({
+  value: scale.id as ModeName,
+  label: scale.name,
+}));
 const STYLE_OPTIONS: Array<{ value: StyleName; label: string }> = [
   { value: 'neo-soul', label: 'Neo-soul' },
   { value: 'lofi', label: 'Lo-fi' },
@@ -57,7 +58,7 @@ const STYLE_OPTIONS: Array<{ value: StyleName; label: string }> = [
   { value: 'blues', label: 'Blues' },
 ];
 
-type PanelTab = 'voicings' | 'alt' | 'info';
+type PanelTab = 'voicings' | 'change' | 'alt' | 'info';
 
 const CELLS_PER_BAR = 2;
 const { reverb: DEFAULT_REVERB, tone: DEFAULT_TONE, tape: DEFAULT_TAPE } = DEFAULT_EFFECT_SETTINGS;
@@ -73,14 +74,6 @@ const clampOctaveShiftValue = (value: number) => {
   return Math.min(PIANO_OCTAVE_OPTIONS[PIANO_OCTAVE_OPTIONS.length - 1], Math.max(PIANO_OCTAVE_OPTIONS[0], Math.round(value)));
 };
 
-const MODE_TO_SCALE_ID: Partial<Record<ModeName, string>> = {
-  ionian: 'ionian',
-  aeolian: 'aeolian',
-  dorian: 'dorian',
-  'melodic minor': 'melodicMinor',
-  'harmonic minor': 'harmonicMinor',
-  mixolydian: 'mixolydian',
-};
 const tuningMidi = tuningToMidi(STANDARD_TUNING);
 
 const DEFAULT_SCALE_POSITION_INDEX = 1;
@@ -100,7 +93,7 @@ function buildEmptyProgression(barCount: number): HarmonyCell[] {
 
 export default function ChordsPage() {
   const [keyName, setKeyName] = useState('C');
-  const [mode, setMode] = useState<ModeName>('ionian');
+  const [scaleId, setScaleId] = useState<ModeName>(DEFAULT_CHORD_SCALE_ID);
   const [style, setStyle] = useState<StyleName>('neo-soul');
   const bars = 4;
   const [cells, setCells] = useState<HarmonyCell[]>([]);
@@ -131,7 +124,7 @@ export default function ChordsPage() {
     try {
       const parsed = JSON.parse(raw);
       setKeyName(parsed.keyName ?? 'C');
-      setMode(parsed.mode ?? 'ionian');
+      setScaleId((parsed.scaleId ?? parsed.mode ?? DEFAULT_CHORD_SCALE_ID) as ModeName);
       setStyle(parsed.style ?? 'neo-soul');
       setBpm(parsed.bpm ?? 84);
       setLoop(parsed.loop ?? false);
@@ -166,7 +159,8 @@ export default function ChordsPage() {
     }
     const payload = {
       keyName,
-      mode,
+      scaleId,
+      mode: scaleId,
       style,
       bars,
       bpm,
@@ -182,7 +176,7 @@ export default function ChordsPage() {
       pianoOctaveShift,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [keyName, mode, style, bars, bpm, loop, cells, reverbAmount, toneAmount, tapeAmount, ampProfileId, instrumentId, pianoOctaveShift]);
+  }, [keyName, scaleId, style, bars, bpm, loop, cells, reverbAmount, toneAmount, tapeAmount, ampProfileId, instrumentId, pianoOctaveShift]);
 
   const applyVoicings = useCallback((draft: HarmonyCell[]): HarmonyCell[] => {
     let prev: Voicing | undefined;
@@ -210,7 +204,7 @@ export default function ChordsPage() {
         : {};
       const next = generateProgression({
         key: keyName,
-        mode,
+        mode: scaleId,
         style,
         bars,
         resolution: RESOLUTION,
@@ -220,7 +214,7 @@ export default function ChordsPage() {
       setCells(withVoicings);
       setSelectedIndex(withVoicings[0]?.index ?? null);
     },
-    [applyVoicings, keyName, mode, style, bars],
+    [applyVoicings, keyName, scaleId, style, bars],
   );
 
   useEffect(() => {
@@ -295,7 +289,11 @@ export default function ChordsPage() {
     return getVoicingsForSymbol(selectedCell.symbol);
   }, [selectedCell]);
 
-  const scaleDef = useMemo(() => getScaleById(MODE_TO_SCALE_ID[mode] ?? 'minorPentatonic'), [mode]);
+  const scaleDef = useMemo(() => getScaleById(scaleId), [scaleId]);
+  const manualChordOptions = useMemo(
+    () => buildManualChordOptions({ key: keyName, scale: scaleDef, genre: style }),
+    [keyName, scaleDef, style],
+  );
   const soloScaleData = useMemo(
     () =>
       buildInstrumentScaleData({
@@ -340,7 +338,7 @@ export default function ChordsPage() {
           if (cell.index !== index) {
             return cell;
           }
-          const updated = reharmonizeHarmonyCell(cell, { key: keyName, mode, style });
+          const updated = reharmonizeHarmonyCell(cell, { key: keyName, mode: scaleId, style });
           return { ...updated, locked: cell.locked };
         }),
       ),
@@ -372,9 +370,23 @@ export default function ChordsPage() {
       ),
     );
   };
+  const handleManualChordChange = (option: ManualChordOption) => {
+    if (!selectedCell) {
+      return;
+    }
+    setCells((prev) =>
+      applyVoicings(
+        prev.map((cell) =>
+          cell.index === selectedCell.index
+            ? { ...cell, roman: option.roman, symbol: option.symbol, voicing: undefined }
+            : cell,
+        ),
+      ),
+    );
+  };
 
   const handleHumanize = () => {
-    setCells((prev) => applyVoicings(humanizeProgression(prev)));
+    setCells((prev) => applyVoicings(humanizeChordCells(prev, style)));
   };
 
   const handleQuantize = () => {
@@ -385,14 +397,27 @@ export default function ChordsPage() {
     if (fromIndex === toIndex) {
       return;
     }
+    const targetIndex = Math.min(Math.max(toIndex, 0), Math.max(0, cells.length - 1));
     setCells((prev) => {
       const next = [...prev];
       const fromPos = next.findIndex((cell) => cell.index === fromIndex);
-      const toPos = next.findIndex((cell) => cell.index === toIndex);
-      if (fromPos === -1 || toPos === -1) {
+      let toPos = next.findIndex((cell) => cell.index === toIndex);
+      if (fromPos === -1) {
         return prev;
       }
+      if (toPos === -1) {
+        if (toIndex >= next.length) {
+          toPos = next.length;
+        } else if (toIndex <= 0) {
+          toPos = 0;
+        } else {
+          return prev;
+        }
+      }
       const [moved] = next.splice(fromPos, 1);
+      if (fromPos < toPos) {
+        toPos -= 1;
+      }
       next.splice(toPos, 0, moved);
       return next.map((cell, idx) => ({ ...cell, index: idx }));
     });
@@ -401,12 +426,12 @@ export default function ChordsPage() {
         return current;
       }
       if (current === fromIndex) {
-        return toIndex;
+        return targetIndex;
       }
-      if (fromIndex < current && current <= toIndex) {
+      if (fromIndex < current && current <= targetIndex) {
         return current - 1;
       }
-      if (toIndex <= current && current < fromIndex) {
+      if (targetIndex <= current && current < fromIndex) {
         return current + 1;
       }
       return current;
@@ -488,9 +513,9 @@ export default function ChordsPage() {
             </select>
           </label>
           <label>
-            Mode
-            <select value={mode} onChange={(event) => setMode(event.target.value as ModeName)}>
-              {MODE_OPTIONS.map((option) => (
+            Scale
+            <select value={scaleId} onChange={(event) => setScaleId(event.target.value as ModeName)}>
+              {SCALE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -540,7 +565,7 @@ export default function ChordsPage() {
               onClick={() =>
                 exportProgressionJson({
                   key: keyName,
-                  mode,
+                  mode: scaleId,
                   style,
                   bpm,
                   cells,
@@ -574,11 +599,10 @@ export default function ChordsPage() {
         <section className="chords-lower-grid">
           <div className="scale-pane">
             <div className="scale-pane__header">
-              <p className="eyebrow">Solo Scale</p>
+              <p className="eyebrow scale-pane__eyebrow">
+                Solo Scale: {keyName} · {scaleDef.name}
+              </p>
               <div className="scale-pane__controls-row">
-                <p className="scale-pane__title">
-                  {keyName} · {scaleDef.name}
-                </p>
                 <div className="scale-pane__selectors">
                   <label>
                     Instrument
@@ -632,14 +656,17 @@ export default function ChordsPage() {
           <nav className="voicing-tabs">
             <button type="button" className={panelTab === 'voicings' ? 'active' : ''} onClick={() => setPanelTab('voicings')}>
               Voicings
-              </button>
-              <button type="button" className={panelTab === 'alt' ? 'active' : ''} onClick={() => setPanelTab('alt')}>
-                Alt Chords
-              </button>
-              <button type="button" className={panelTab === 'info' ? 'active' : ''} onClick={() => setPanelTab('info')}>
-                Info
-              </button>
-            </nav>
+            </button>
+            <button type="button" className={panelTab === 'change' ? 'active' : ''} onClick={() => setPanelTab('change')}>
+              Change
+            </button>
+            <button type="button" className={panelTab === 'alt' ? 'active' : ''} onClick={() => setPanelTab('alt')}>
+              Alt Chords
+            </button>
+            <button type="button" className={panelTab === 'info' ? 'active' : ''} onClick={() => setPanelTab('info')}>
+              Info
+            </button>
+          </nav>
           {panelTab === 'voicings' && (
             <ChordList
               voicings={voicingOptions}
@@ -647,6 +674,22 @@ export default function ChordsPage() {
               onSelect={handleSelectVoicing}
               onPlay={(voicing) => playChord(voicing, { mode: arpeggioMode })}
             />
+          )}
+          {panelTab === 'change' && (
+            <div className="manual-chord-grid">
+              {manualChordOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className="manual-chord-option"
+                  onClick={() => handleManualChordChange(option)}
+                >
+                  <span className="manual-chord-roman">{option.roman}</span>
+                  <span className="manual-chord-symbol">{option.symbol}</span>
+                </button>
+              ))}
+              {!manualChordOptions.length && <p className="muted">No chords available for this scale.</p>}
+            </div>
           )}
             {panelTab === 'alt' && (
               <div className="alt-chord-list">
@@ -706,26 +749,58 @@ export default function ChordsPage() {
   );
 }
 
-function humanizeProgression(cells: HarmonyCell[]): HarmonyCell[] {
-  const colors = ['add9', '6/9', 'sus2', 'sus4', 'maj9', 'm9', '9sus4'];
-  return cells.map((cell) => {
-    if (cell.symbol === 'Rest' || Math.random() > 0.35) {
-      return cell;
-    }
-    const root = extractRoot(cell.symbol);
-    if (!root) {
-      return cell;
-    }
-    const choice = colors[Math.floor(Math.random() * colors.length)];
-    return { ...cell, symbol: `${root}${choice}` };
-  });
-}
-
 function quantizeProgression(cells: HarmonyCell[]): HarmonyCell[] {
   return cells
     .slice()
     .sort((a, b) => a.index - b.index)
     .map((cell, index) => ({ ...cell, index }));
+}
+
+type ManualChordOption = {
+  id: string;
+  roman: RomanDegree;
+  symbol: string;
+};
+
+function buildManualChordOptions({
+  key,
+  scale,
+  genre,
+}: {
+  key: string;
+  scale: ScaleDef;
+  genre: StyleName;
+}): ManualChordOption[] {
+  if (!scale) {
+    return [];
+  }
+  const degrees = listGenreDegrees(genre);
+  if (!degrees.length) {
+    return [];
+  }
+  const uniqueDegrees = Array.from(new Set(degrees));
+  const options = uniqueDegrees.map((degree) => {
+    const symbol = buildChordSymbolForDegree({ key, mode: scale.id, degree, genre, humanise: false });
+    return {
+      id: `${degree}-${symbol}`,
+      roman: degree,
+      symbol,
+    };
+  });
+  const order = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
+  options.sort((a, b) => {
+    const aIndex = order.indexOf(stripDegreeAccidentals(a.roman));
+    const bIndex = order.indexOf(stripDegreeAccidentals(b.roman));
+    if (aIndex === -1 || bIndex === -1) {
+      return a.roman.localeCompare(b.roman);
+    }
+    return aIndex - bIndex;
+  });
+  return options;
+}
+
+function stripDegreeAccidentals(roman: RomanDegree): string {
+  return roman.replace(/[b#]/g, '');
 }
 
 function buildAltChords(symbol: string): Array<{ label: string; symbol: string }> {
