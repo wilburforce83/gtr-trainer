@@ -164,8 +164,8 @@ export const AMP_PROFILES: AmpProfile[] = [
 ];
 
 export const DEFAULT_EFFECT_SETTINGS: EffectSettings = {
-  reverb: 0.25,
-  tone: 0.65,
+  reverb: 0.35,
+  tone: 0.45,
   tape: 0,
 };
 

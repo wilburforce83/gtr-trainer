@@ -115,7 +115,7 @@ export async function playSequence(sequence: SequenceToken[], options: PlayOptio
     sequencePart.start(countInSeconds);
     Tone.Transport.start();
   }
-}
+} 
 
 export function stopAll(): void {
   if (!isBrowser()) {
