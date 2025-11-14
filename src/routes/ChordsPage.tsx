@@ -28,7 +28,8 @@ import {
   primeChordAudioUnlock,
   setReverbAmount as applyReverbAmount,
   setToneAmount as applyToneAmount,
-  setTapeAmount as applyTapeAmount,
+  setDelayAmount as applyDelayAmount,
+  setChorusAmount as applyChorusAmount,
   setAmpProfile as applyAmpProfile,
   setInstrument as applyInstrument,
   setInstrumentOctaveShift as applyInstrumentOctaveShift,
@@ -72,11 +73,16 @@ const STYLE_OPTIONS: Array<{ value: StyleName; label: string }> = [
 type PanelTab = 'voicings' | 'change' | 'alt' | 'info';
 
 const CELLS_PER_BAR = 2;
-const { reverb: DEFAULT_REVERB, tone: DEFAULT_TONE, tape: DEFAULT_TAPE } = DEFAULT_EFFECT_SETTINGS;
+const {
+  reverb: DEFAULT_REVERB,
+  tone: DEFAULT_TONE,
+  delay: DEFAULT_DELAY,
+  chorus: DEFAULT_CHORUS,
+} = DEFAULT_EFFECT_SETTINGS;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 const readEffectValue = (value: unknown, fallback: number) => (typeof value === 'number' ? clamp01(value) : fallback);
-const DEFAULT_PIANO_OCTAVE_SHIFT = -1;
+const DEFAULT_PIANO_OCTAVE_SHIFT = 0;
 const PIANO_OCTAVE_OPTIONS = [-2, -1, 0, 1, 2];
 const clampOctaveShiftValue = (value: number) => {
   if (Number.isNaN(value)) {
@@ -110,13 +116,13 @@ export default function ChordsPage() {
   const [cells, setCells] = useState<HarmonyCell[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [bpm, setBpm] = useState(84);
-  const [loop, setLoop] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [arpeggioMode, setArpeggioMode] = useState<'arpeggio' | 'strum' | 'picked'>('arpeggio');
+  const [arpeggioSpread, setArpeggioSpread] = useState(0.5);
   const [panelTab, setPanelTab] = useState<PanelTab>('voicings');
   const [reverbAmount, setReverbAmountState] = useState(DEFAULT_REVERB);
   const [toneAmount, setToneAmountState] = useState(DEFAULT_TONE);
-  const [tapeAmount, setTapeAmountState] = useState(DEFAULT_TAPE);
+  const [delayAmount, setDelayAmountState] = useState(DEFAULT_DELAY);
+  const [chorusAmount, setChorusAmountState] = useState(DEFAULT_CHORUS);
   const [scalePositionIndex, setScalePositionIndex] = useState(DEFAULT_SCALE_POSITION_INDEX);
   const [soloInstrumentId, setSoloInstrumentId] = useState<InstrumentId>(DEFAULT_SOLO_INSTRUMENT_ID);
   const [soloTuningId, setSoloTuningId] = useState(DEFAULT_SOLO_TUNING_ID);
@@ -143,7 +149,11 @@ export default function ChordsPage() {
       setScaleId((parsed.scaleId ?? parsed.mode ?? DEFAULT_CHORD_SCALE_ID) as ModeName);
       setStyle(parsed.style ?? 'neo-soul');
       setBpm(parsed.bpm ?? 84);
-      setLoop(parsed.loop ?? false);
+      if (typeof parsed.arpeggioSpread === 'number') {
+        setArpeggioSpread(clamp01(parsed.arpeggioSpread));
+      } else {
+        setArpeggioSpread(0.5);
+      }
       if (typeof parsed.ampProfileId === 'string') {
         const exists = AMP_PROFILES.some((profile) => profile.id === parsed.ampProfileId);
         setAmpProfileId(exists ? parsed.ampProfileId : AMP_PROFILES[0].id);
@@ -160,7 +170,8 @@ export default function ChordsPage() {
       const effects = parsed.effects ?? {};
       setReverbAmountState(readEffectValue(effects.reverb, DEFAULT_REVERB));
       setToneAmountState(readEffectValue(effects.tone, DEFAULT_TONE));
-      setTapeAmountState(readEffectValue(effects.tape, DEFAULT_TAPE));
+      setDelayAmountState(readEffectValue(effects.delay, DEFAULT_DELAY));
+      setChorusAmountState(readEffectValue(effects.chorus, DEFAULT_CHORUS));
       if (Array.isArray(parsed.cells)) {
         setCells(parsed.cells);
       }
@@ -188,7 +199,7 @@ export default function ChordsPage() {
       style,
       bars,
       bpm,
-      loop,
+      arpeggioSpread,
       cells,
       drumsEnabled,
       drumPatternIndex,
@@ -196,7 +207,8 @@ export default function ChordsPage() {
       effects: {
         reverb: reverbAmount,
         tone: toneAmount,
-        tape: tapeAmount,
+        delay: delayAmount,
+        chorus: chorusAmount,
       },
       ampProfileId,
       instrumentId,
@@ -209,14 +221,15 @@ export default function ChordsPage() {
     style,
     bars,
     bpm,
-    loop,
+    arpeggioSpread,
     cells,
     drumsEnabled,
     drumPatternIndex,
     mixerSettings,
     reverbAmount,
     toneAmount,
-    tapeAmount,
+    delayAmount,
+    chorusAmount,
     ampProfileId,
     instrumentId,
     pianoOctaveShift,
@@ -328,8 +341,12 @@ useEffect(() => {
   }, [toneAmount]);
 
   useEffect(() => {
-    applyTapeAmount(tapeAmount);
-  }, [tapeAmount]);
+    applyDelayAmount(delayAmount);
+  }, [delayAmount]);
+
+  useEffect(() => {
+    applyChorusAmount(chorusAmount);
+  }, [chorusAmount]);
 
   useEffect(() => {
     applyAmpProfile(ampProfileId);
@@ -387,13 +404,14 @@ useEffect(() => {
       scaleId,
       style,
       bpm,
-      loop,
+      arpeggioSpread,
+      pianoOctaveShift,
       cells,
       drumsEnabled,
       drumPatternIndex,
       mixer: mixerSettings,
     }),
-    [keyName, scaleId, style, bpm, loop, cells, drumsEnabled, drumPatternIndex, mixerSettings],
+    [keyName, scaleId, style, bpm, arpeggioSpread, pianoOctaveShift, cells, drumsEnabled, drumPatternIndex, mixerSettings],
   );
   const soloScaleData = useMemo(
     () =>
@@ -422,7 +440,7 @@ useEffect(() => {
     setSelectedIndex(index);
     const cell = cells.find((candidate) => candidate.index === index);
     if (cell?.voicing) {
-      playChord(cell.voicing, { mode: arpeggioMode });
+      playChord(cell.voicing, { arpeggioSpread });
     }
   };
 
@@ -457,7 +475,7 @@ useEffect(() => {
       prev.map((cell) => (cell.index === selectedCell?.index ? { ...cell, voicing } : cell)),
     );
     if (selectedCell) {
-      playChord(voicing, { mode: arpeggioMode });
+      playChord(voicing, { arpeggioSpread });
     }
   };
 
@@ -553,8 +571,8 @@ useEffect(() => {
       return;
     }
     const patternForRun = drumsEnabled ? createDrumPattern() : null;
-    const started = await playProgression(cells, loop, {
-      mode: arpeggioMode,
+    const started = await playProgression(cells, true, {
+      arpeggioSpread,
       drums: {
         enabled: Boolean(patternForRun),
         pattern: patternForRun,
@@ -576,8 +594,16 @@ useEffect(() => {
     setToneAmountState(clamp01(value));
   };
 
-  const handleTapeChange = (value: number) => {
-    setTapeAmountState(clamp01(value));
+  const handleDelayChange = (value: number) => {
+    setDelayAmountState(clamp01(value));
+  };
+
+  const handleChorusChange = (value: number) => {
+    setChorusAmountState(clamp01(value));
+  };
+
+  const handleArpeggioSpreadChange = (value: number) => {
+    setArpeggioSpread(clamp01(value));
   };
 
   const handleAmpChange = (value: string) => {
@@ -586,10 +612,6 @@ useEffect(() => {
 
   const handleInstrumentChange = (value: string) => {
     setInstrumentId(value);
-  };
-
-  const handlePianoOctaveShiftChange = (value: number) => {
-    setPianoOctaveShift(clampOctaveShiftValue(value));
   };
 
   const handleDrumPatternChange = (value: number) => {
@@ -611,7 +633,8 @@ useEffect(() => {
     setScaleId(payload.scaleId);
     setStyle(payload.style);
     setBpm(payload.bpm);
-    setLoop(payload.loop);
+    setPianoOctaveShift(clampOctaveShiftValue(payload.pianoOctaveShift ?? DEFAULT_PIANO_OCTAVE_SHIFT));
+    setArpeggioSpread(clamp01(payload.arpeggioSpread ?? 0.5));
     setCells(payload.cells);
     setSelectedIndex(payload.cells[0]?.index ?? null);
     const nextPatternIndex =
@@ -626,8 +649,6 @@ useEffect(() => {
   };
 
   const altChords = selectedCell ? buildAltChords(selectedCell.symbol) : [];
-  const isPianoSelected = instrumentId === 'piano';
-
   return (
     <>
       <div className="chords-shell">
@@ -705,20 +726,6 @@ useEffect(() => {
           </div>
           <div className="control-buttons export-actions">
             <span className="export-label">Export</span>
-            <button
-              type="button"
-              onClick={() =>
-                exportProgressionJson({
-                  key: keyName,
-                  mode: scaleId,
-                  style,
-                  bpm,
-                  cells,
-                })
-              }
-            >
-              JSON
-            </button>
             <button type="button" onClick={() => exportProgressionMidi(cells, bpm)}>MIDI</button>
             <button type="button" onClick={() => exportProgressionPng(cells)}>PNG</button>
           </div>
@@ -817,7 +824,7 @@ useEffect(() => {
               voicings={voicingOptions}
               selectedId={selectedCell?.voicing?.id}
               onSelect={handleSelectVoicing}
-              onPlay={(voicing) => playChord(voicing, { mode: arpeggioMode })}
+              onPlay={(voicing) => playChord(voicing, { arpeggioSpread })}
             />
           )}
           {panelTab === 'change' && (
@@ -862,34 +869,30 @@ useEffect(() => {
           </div>
           <div className="transport-pane">
             <Transport
-              loop={loop}
               isPlaying={isPlaying}
               onPlay={handlePlay}
               onStop={handleStop}
-              onToggleLoop={setLoop}
-            mode={arpeggioMode}
-            onModeChange={setArpeggioMode}
-            reverb={reverbAmount}
-            tone={toneAmount}
-            tape={tapeAmount}
-            onReverbChange={handleReverbChange}
-            onToneChange={handleToneChange}
-            onTapeChange={handleTapeChange}
-            ampProfiles={AMP_PROFILES}
-            ampId={ampProfileId}
-            onAmpChange={handleAmpChange}
-            instrument={instrumentId}
-            instrumentOptions={INSTRUMENT_OPTIONS}
-            onInstrumentChange={handleInstrumentChange}
-            showOctaveShift={isPianoSelected}
-            octaveShift={isPianoSelected ? pianoOctaveShift : 0}
-            octaveShiftOptions={PIANO_OCTAVE_OPTIONS}
-            onOctaveShiftChange={handlePianoOctaveShiftChange}
-            drumPatternIndex={drumPatternIndex}
-            drumPatternOptions={drumPatternChoices}
-            onDrumPatternChange={handleDrumPatternChange}
-            onOpenMixer={() => setShowMixerModal(true)}
-          />
+              arpeggioSpread={arpeggioSpread}
+              onArpeggioSpreadChange={handleArpeggioSpreadChange}
+              reverb={reverbAmount}
+              tone={toneAmount}
+              delay={delayAmount}
+              chorus={chorusAmount}
+              onReverbChange={handleReverbChange}
+              onToneChange={handleToneChange}
+              onDelayChange={handleDelayChange}
+              onChorusChange={handleChorusChange}
+              ampProfiles={AMP_PROFILES}
+              ampId={ampProfileId}
+              onAmpChange={handleAmpChange}
+              instrument={instrumentId}
+              instrumentOptions={INSTRUMENT_OPTIONS}
+              onInstrumentChange={handleInstrumentChange}
+              drumPatternIndex={drumPatternIndex}
+              drumPatternOptions={drumPatternChoices}
+              onDrumPatternChange={handleDrumPatternChange}
+              onOpenMixer={() => setShowMixerModal(true)}
+            />
           </div>
         </section>
 
@@ -980,11 +983,6 @@ function readMixerSettings(input: unknown): DrumMixerSettings {
   return base;
 }
 
-
-function exportProgressionJson(payload: { key: string; mode: string; style: string; bpm: number; cells: HarmonyCell[] }) {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  downloadBlob(blob, 'progression.json');
-}
 
 function exportProgressionMidi(cells: HarmonyCell[], bpm: number) {
   if (!cells.length) {

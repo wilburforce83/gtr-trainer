@@ -12,6 +12,8 @@ let clickSynth: Tone.Synth | null = null;
 let sequencePart: Tone.Part | null = null;
 let masterVolume = 0.85;
 const METRONOME_GAIN_DB = -30;
+const DEFAULT_ARPEGGIO_SPREAD = 0.5;
+const ARPEGGIO_DIVISIONS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined';
@@ -69,6 +71,10 @@ type PlayOptions = {
   loop?: boolean;
   countIn?: number;
   masterVolume?: number;
+};
+
+type ChordPlaybackOptions = {
+  arpeggioSpread?: number;
 };
 
 export async function playSequence(sequence: SequenceToken[], options: PlayOptions = {}): Promise<void> {
@@ -143,7 +149,7 @@ export function setGlobalVolume(value: number): void {
 export async function playChord(
   voicing: VoicingPosition[],
   tuningMidi: number[],
-  mode: 'arpeggio' | 'strum' | 'picked' = 'arpeggio',
+  options: ChordPlaybackOptions = {},
 ): Promise<void> {
   if (!voicing.length) {
     return;
@@ -154,28 +160,24 @@ export async function playChord(
   }
   const sampler = ready.sampler;
   const startTime = Tone.now();
-  const ordered = [...voicing];
-  if (mode === 'arpeggio') {
-    ordered.sort((a, b) => b.string - a.string);
-  }
+  const spread = normalizeArpeggioSpread(options.arpeggioSpread);
+  const ordered = [...voicing].sort((a, b) => b.string - a.string);
+  const noteCount = ordered.length;
+  const hasSpread = spread > 0 && noteCount > 1;
+  const barDuration = Tone.Time('1m').toSeconds();
+  const cellDuration = barDuration / 2;
+  const targetSpan = spread * cellDuration;
+  const span = hasSpread ? quantizeArpeggioSpan(targetSpan, cellDuration) : 0;
+  const interval = span > 0 && noteCount > 1 ? span / (noteCount - 1) : 0;
+  const duration: Tone.Unit.Time = interval > 0 ? '2n' : '1m';
+
   ordered.forEach((position, index) => {
     const stringMidi = tuningMidi[position.string - 1];
     if (typeof stringMidi !== 'number') {
       return;
     }
     const midi = stringMidi + position.fret;
-    let time = startTime;
-    let duration: Tone.Unit.Time = '2n';
-    if (mode === 'arpeggio') {
-      time += index * 0.08;
-      duration = '2n';
-    } else if (mode === 'picked') {
-      time += (index % 2 === 0 ? index * 0.12 : index * 0.18) + Math.random() * 0.03;
-      duration = '1n';
-    } else {
-      time += index * 0.015;
-      duration = '1m';
-    }
+    const time = startTime + interval * index;
     sampler.triggerAttackRelease(midiToNoteName(midi), duration, time);
   });
 }
@@ -205,4 +207,28 @@ function scheduleCountIn(beats: number, beatSeconds: number): void {
       clickSynth?.triggerAttackRelease('C6', '16n', time);
     }, i * beatSeconds);
   }
+}
+
+function normalizeArpeggioSpread(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return DEFAULT_ARPEGGIO_SPREAD;
+  }
+  return Math.min(1, Math.max(0, value));
+}
+
+function quantizeArpeggioSpan(targetSpan: number, windowDuration: number): number {
+  if (targetSpan <= 0) {
+    return 0;
+  }
+  let best = windowDuration;
+  let bestDiff = Math.abs(best - targetSpan);
+  for (const division of ARPEGGIO_DIVISIONS) {
+    const candidate = windowDuration / division;
+    const diff = Math.abs(candidate - targetSpan);
+    if (diff < bestDiff) {
+      best = candidate;
+      bestDiff = diff;
+    }
+  }
+  return best;
 }

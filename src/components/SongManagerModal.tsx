@@ -9,7 +9,8 @@ export type SongPayload = {
   scaleId: ModeName;
   style: StyleName;
   bpm: number;
-  loop: boolean;
+  arpeggioSpread: number;
+  pianoOctaveShift?: number;
   cells: HarmonyCell[];
   drumsEnabled: boolean;
   drumPatternIndex: number;

@@ -10,8 +10,9 @@ import { primeDrumKit, scheduleDrumPattern } from '../drums/audio';
 export {
   DEFAULT_EFFECT_SETTINGS,
   setReverbAmount,
-  setTapeAmount,
   setToneAmount,
+  setDelayAmount,
+  setChorusAmount,
   AMP_PROFILES,
   setAmpProfile,
   INSTRUMENT_OPTIONS,
@@ -20,17 +21,18 @@ export {
 } from '../lib/samplePlayer';
 export type { EffectSettings, AmpProfile } from '../lib/samplePlayer';
 
-type StrumMode = 'arpeggio' | 'strum' | 'picked';
-
 type DrumPlaybackOptions = {
   enabled: boolean;
   pattern: DrumPattern | null;
 };
 
 type PlayOptions = {
-  mode?: StrumMode;
+  arpeggioSpread?: number;
   drums?: DrumPlaybackOptions;
 };
+
+const DEFAULT_ARPEGGIO_SPREAD = 0.5;
+const ARPEGGIO_DIVISIONS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
 
 const tuningMidi = tuningToMidi(STANDARD_TUNING);
 let metronome: Tone.MembraneSynth | null = null;
@@ -90,8 +92,8 @@ export async function playChord(voicing: Voicing, options: PlayOptions = {}): Pr
     return;
   }
   const now = Tone.now();
-  const mode = options.mode ?? 'arpeggio';
-  triggerNotesWithMode(sampler, notes, now, mode);
+  const spread = normalizeArpeggioSpread(options.arpeggioSpread);
+  triggerNotesWithSpread(sampler, notes, now, spread);
 }
 
 export async function playProgression(
@@ -109,7 +111,7 @@ export async function playProgression(
   if (drumPattern) {
     await primeDrumKit();
   }
-  const mode = options.mode ?? 'arpeggio';
+  const spread = normalizeArpeggioSpread(options.arpeggioSpread);
   Tone.Transport.stop();
   Tone.Transport.cancel();
   Tone.Transport.position = 0;
@@ -132,10 +134,10 @@ export async function playProgression(
         const voicing = cell.voicing;
         if (voicing) {
           const notes = voicingToNotes(voicing);
-          triggerNotesWithMode(sampler, notes, time, mode);
+          triggerNotesWithSpread(sampler, notes, time, spread);
         } else {
           const notes = chordSymbolToNotes(cell.symbol);
-          triggerNotesWithMode(sampler, notes, time, mode);
+          triggerNotesWithSpread(sampler, notes, time, spread);
         }
       }, position);
     });
@@ -192,21 +194,27 @@ export async function setMetronomeEnabled(enabled: boolean): Promise<boolean> {
   return true;
 }
 
-function triggerNotesWithMode(sampler: Tone.Sampler, notes: string[], time: number, mode: StrumMode) {
+function triggerNotesWithSpread(sampler: Tone.Sampler, notes: string[], startTime: number, spread: number) {
   if (!notes.length) {
     return;
   }
-  if (mode === 'arpeggio') {
-    notes.forEach((note, idx) => {
-      sampler.triggerAttackRelease(note, '2n', time + idx * 0.08);
-    });
+  const normalized = normalizeArpeggioSpread(spread);
+  if (normalized <= 0 || notes.length === 1) {
+    sampler.triggerAttackRelease(notes, '1m', startTime);
     return;
   }
-  if (mode === 'picked') {
-    triggerPickingPattern(sampler, notes, time);
+  const barDuration = Tone.Time('1m').toSeconds();
+  const cellDuration = barDuration / 2;
+  const targetSpan = normalized * cellDuration;
+  const span = quantizeArpeggioSpan(targetSpan, cellDuration);
+  if (span <= 0) {
+    sampler.triggerAttackRelease(notes, '1m', startTime);
     return;
   }
-  sampler.triggerAttackRelease(notes, '1m', time);
+  const interval = span / (notes.length - 1);
+  notes.forEach((note, idx) => {
+    sampler.triggerAttackRelease(note, '2n', startTime + idx * interval);
+  });
 }
 
 function voicingToNotes(voicing: Voicing): string[] {
@@ -228,58 +236,33 @@ function chordSymbolToNotes(symbol: string): string[] {
   return chord.notes.map((note, idx) => `${note}${octaves[idx % octaves.length]}`);
 }
 
-function triggerPickingPattern(sampler: Tone.Sampler, notes: string[], startTime: number) {
-  const sequence = buildPickingSequence(notes, 4);
-  if (!sequence.length) {
-    return;
-  }
-  const stepDuration = Tone.Time('8n').toSeconds();
-  sequence.forEach((note, step) => {
-    sampler.triggerAttackRelease(note, '8n', startTime + step * stepDuration);
-  });
-}
-
-function buildPickingSequence(notes: string[], length = 4): string[] {
-  if (!notes.length) {
-    return [];
-  }
-  const sorted = sortNotesAscending(notes);
-  const sequence: string[] = [];
-  if (sorted.length === 1) {
-    return Array.from({ length }, () => sorted[0]);
-  }
-  if (sorted.length === 2) {
-    while (sequence.length < length) {
-      sequence.push(sorted[0], sorted[1]);
-    }
-    return sequence.slice(0, length);
-  }
-  const lowest = sorted[0];
-  const highest = sorted[sorted.length - 1];
-  const mid = sorted[Math.floor(sorted.length / 2)];
-  const secondLowest = sorted[1];
-  const pattern = [lowest, highest, mid, highest, secondLowest];
-  while (sequence.length < length) {
-    sequence.push(pattern[sequence.length % pattern.length]);
-  }
-  return sequence.slice(0, length);
-}
-
-function sortNotesAscending(notes: string[]): string[] {
-  return [...notes].sort((a, b) => noteToMidi(a) - noteToMidi(b));
-}
-
-function noteToMidi(note: string): number {
-  try {
-    return Tone.Frequency(note).toMidi();
-  } catch {
-    return 0;
-  }
-}
-
 function cellIndexToPosition(index: number): string {
   const bar = Math.floor(index / 2);
   const half = index % 2;
   const beats = half * 2;
   return `${bar}:${beats}:0`;
+}
+
+function normalizeArpeggioSpread(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return DEFAULT_ARPEGGIO_SPREAD;
+  }
+  return Math.min(1, Math.max(0, value));
+}
+
+function quantizeArpeggioSpan(targetSpan: number, windowDuration: number): number {
+  if (targetSpan <= 0) {
+    return 0;
+  }
+  let best = windowDuration;
+  let bestDiff = Math.abs(best - targetSpan);
+  for (const division of ARPEGGIO_DIVISIONS) {
+    const candidate = windowDuration / division;
+    const diff = Math.abs(candidate - targetSpan);
+    if (diff < bestDiff) {
+      best = candidate;
+      bestDiff = diff;
+    }
+  }
+  return best;
 }

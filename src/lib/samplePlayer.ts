@@ -84,7 +84,8 @@ export const INSTRUMENT_OPTIONS = INSTRUMENT_DEFINITIONS.map(({ id, label }) => 
 export type EffectSettings = {
   reverb: number;
   tone: number;
-  tape: number;
+  delay: number;
+  chorus: number;
 };
 
 export type AmpProfile = {
@@ -105,13 +106,15 @@ export const AMP_PROFILES: AmpProfile[] = [
 export const DEFAULT_EFFECT_SETTINGS: EffectSettings = {
   reverb: 0.35,
   tone: 0.45,
-  tape: 0,
+  delay: 0.2,
+  chorus: 0.15,
 };
 
 let sampler: Tone.Sampler | null = null;
 let volumeNode: Tone.Volume | null = null;
 let filterNode: Tone.Filter | null = null;
-let bitCrusherNode: Tone.BitCrusher | null = null;
+let chorusNode: Tone.Chorus | null = null;
+let delayNode: Tone.FeedbackDelay | null = null;
 let reverbNode: Tone.Reverb | null = null;
 let convolverNode: Tone.Convolver | null = null;
 let toneReady = false;
@@ -126,7 +129,8 @@ const sampleStateListeners = new Set<(state: SampleLoadState) => void>();
 let activeInstrumentId = INSTRUMENT_DEFINITIONS[0].id;
 let reverbAmount = DEFAULT_EFFECT_SETTINGS.reverb;
 let toneAmount = DEFAULT_EFFECT_SETTINGS.tone;
-let tapeAmount = DEFAULT_EFFECT_SETTINGS.tape;
+let delayAmount = DEFAULT_EFFECT_SETTINGS.delay;
+let chorusAmount = DEFAULT_EFFECT_SETTINGS.chorus;
 let ampProfileId = AMP_PROFILES[0].id;
 const instrumentOctaveShift = new Map<string, number>();
 
@@ -236,11 +240,22 @@ function ensureEffectNodes(): void {
       Q: 0.8,
     });
   }
-  if (!bitCrusherNode) {
-    bitCrusherNode = new Tone.BitCrusher({
-      bits: tapeAmountToBits(tapeAmount),
+  if (!chorusNode) {
+    chorusNode = new Tone.Chorus({
+      frequency: 1.2,
+      delayTime: 3.5,
+      depth: 0.5,
+      spread: 180,
+      wet: chorusAmount,
     });
-    bitCrusherNode.wet.value = tapeAmount;
+    chorusNode.start();
+  }
+  if (!delayNode) {
+    delayNode = new Tone.FeedbackDelay({
+      delayTime: 0.28,
+      feedback: 0.35,
+      wet: delayAmount,
+    });
   }
   if (!reverbNode) {
     reverbNode = new Tone.Reverb({
@@ -267,14 +282,16 @@ function connectChain() {
 
   sampler.disconnect();
   filterNode?.disconnect();
-  bitCrusherNode?.disconnect();
+  chorusNode?.disconnect();
+  delayNode?.disconnect();
   reverbNode?.disconnect();
   convolverNode?.disconnect();
 
   let current: Tone.ToneAudioNode = sampler;
   const chain: Array<Tone.ToneAudioNode | null> = [
     filterNode,
-    bitCrusherNode,
+    chorusNode,
+    delayNode,
     reverbNode,
     convolverNode && ampProfileId !== 'direct' ? convolverNode : null,
   ];
@@ -350,11 +367,17 @@ export function setToneAmount(value: number): void {
   }
 }
 
-export function setTapeAmount(value: number): void {
-  tapeAmount = clamp01(value);
-  if (bitCrusherNode) {
-    bitCrusherNode.wet.rampTo(tapeAmount, 0.1);
-    bitCrusherNode.set({ bits: tapeAmountToBits(tapeAmount) });
+export function setDelayAmount(value: number): void {
+  delayAmount = clamp01(value);
+  if (delayNode) {
+    delayNode.wet.rampTo(delayAmount, 0.1);
+  }
+}
+
+export function setChorusAmount(value: number): void {
+  chorusAmount = clamp01(value);
+  if (chorusNode) {
+    chorusNode.wet.rampTo(chorusAmount, 0.1);
   }
 }
 
@@ -415,20 +438,15 @@ function toneAmountToFrequency(amount: number): number {
   return minFreq + (maxFreq - minFreq) * shaped;
 }
 
-function tapeAmountToBits(amount: number): number {
-  const minBits = 2;
-  const maxBits = 8;
-  const scaled = Math.round(maxBits - (maxBits - minBits) * amount);
-  return Math.min(maxBits, Math.max(minBits, scaled));
-}
-
 function applyEffectSettings(): void {
   if (filterNode) {
     filterNode.frequency.value = toneAmountToFrequency(toneAmount);
   }
-  if (bitCrusherNode) {
-    bitCrusherNode.set({ bits: tapeAmountToBits(tapeAmount) });
-    bitCrusherNode.wet.value = tapeAmount;
+  if (chorusNode) {
+    chorusNode.wet.value = chorusAmount;
+  }
+  if (delayNode) {
+    delayNode.wet.value = delayAmount;
   }
   if (reverbNode) {
     reverbNode.wet.value = reverbAmount;
