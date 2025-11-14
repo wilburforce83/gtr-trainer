@@ -39,6 +39,13 @@ let bassSynth: Tone.MonoSynth | null = null;
 let bassVolume: Tone.Volume | null = null;
 let bassLevel = 0.65;
 
+type ChordPlaybackEvent = {
+  index: number;
+  duration: number;
+};
+
+const chordPlaybackListeners = new Set<(event: ChordPlaybackEvent) => void>();
+
 const tuningMidi = tuningToMidi(STANDARD_TUNING);
 let metronome: Tone.MembraneSynth | null = null;
 let metronomeLoop: Tone.Loop | null = null;
@@ -151,6 +158,7 @@ export async function playProgression(
   Tone.Transport.loopEnd = `${Math.ceil(totalBars)}:0:0`;
 
   const copies = Math.ceil(totalBars / progressionBars);
+  let lastBassNote: string | null = null;
   for (let copy = 0; copy < Math.max(1, copies); copy += 1) {
     cells.forEach((cell, index) => {
       const barNumber = Math.floor(index / 2) + copy * progressionBars;
@@ -159,8 +167,20 @@ export async function playProgression(
       }
       const globalIndex = copy * cells.length + index;
       const position = cellIndexToPosition(globalIndex);
-      const bassNote = bassReady ? getBassNoteForCell(cell) : null;
+      const bassNotes = bassReady ? getBassNoteVariants(cell) : null;
+      const isFourthBar = barNumber % 4 === 3;
+      const cellHalf = globalIndex % 2;
+      const noteForCell = bassNotes
+        ? isFourthBar && cellHalf === 1
+          ? bassNotes.fifth
+          : bassNotes.root
+        : null;
+      if (noteForCell) {
+        lastBassNote = noteForCell;
+      }
+      const carryNote = !noteForCell ? lastBassNote : null;
       Tone.Transport.schedule((time) => {
+        notifyChordPlayback(cell.index, time);
         const voicing = cell.voicing;
         if (voicing) {
           const notes = voicingToNotes(voicing);
@@ -169,8 +189,11 @@ export async function playProgression(
           const notes = chordSymbolToNotes(cell.symbol);
           triggerNotesWithSpread(sampler, notes, time, spread);
         }
-        if (bassNote) {
-          triggerBassForCell(bassNote, time);
+        if (noteForCell) {
+          triggerBassForCell(noteForCell, time);
+        } else if (carryNote) {
+          const secondBeat = time + Tone.Time('4n').toSeconds();
+          triggerBassForCell(carryNote, secondBeat, 0.45, '4n');
         }
       }, position);
     });
@@ -269,14 +292,19 @@ function chordSymbolToNotes(symbol: string): string[] {
   return chord.notes.map((note, idx) => `${note}${octaves[idx % octaves.length]}`);
 }
 
-function triggerBassForCell(note: string, time: number) {
+function triggerBassForCell(note: string, time: number, velocity = 0.9, duration: Tone.Unit.Time = '2n') {
   if (!bassSynth) {
     return;
   }
-  bassSynth.triggerAttackRelease(note, '2n', time, 0.9);
+  bassSynth.triggerAttackRelease(note, duration, time, velocity);
 }
 
-function getBassNoteForCell(cell: HarmonyCell): string | null {
+type BassNotes = {
+  root: string;
+  fifth: string;
+};
+
+function getBassNoteVariants(cell: HarmonyCell): BassNotes | null {
   if (!cell.symbol || cell.symbol.toLowerCase() === 'rest') {
     return null;
   }
@@ -286,7 +314,21 @@ function getBassNoteForCell(cell: HarmonyCell): string | null {
   if (!pitch) {
     return null;
   }
-  return `${pitch}${BASS_OCTAVE}`;
+  const rootNote = `${pitch}${BASS_OCTAVE}`;
+  const fifthNote = transposeNote(rootNote, 7) ?? rootNote;
+  return { root: rootNote, fifth: fifthNote };
+}
+
+function transposeNote(note: string, semitones: number): string | null {
+  try {
+    const midi = Tone.Frequency(note).toMidi();
+    if (Number.isNaN(midi)) {
+      return null;
+    }
+    return Tone.Frequency(midi + semitones, 'midi').toNote();
+  } catch {
+    return null;
+  }
 }
 
 function inferRootFromSymbol(symbol: string): string | null {
@@ -310,6 +352,20 @@ export function setBassLevel(value: number): void {
   if (bassVolume) {
     bassVolume.volume.rampTo(levelToDb(bassLevel), 0.1);
   }
+}
+
+export function addChordPlaybackListener(listener: (event: ChordPlaybackEvent) => void): () => void {
+  chordPlaybackListeners.add(listener);
+  return () => {
+    chordPlaybackListeners.delete(listener);
+  };
+}
+
+function notifyChordPlayback(index: number, startTime: number): void {
+  const duration = Tone.Time('2n').toSeconds();
+  Tone.Draw.schedule(() => {
+    chordPlaybackListeners.forEach((listener) => listener({ index, duration }));
+  }, startTime);
 }
 
 function normalizeArpeggioSpread(value: unknown): number {

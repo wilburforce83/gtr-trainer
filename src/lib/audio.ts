@@ -112,15 +112,18 @@ export async function playSequence(sequence: SequenceToken[], options: PlayOptio
     sequencePart.loop = loopEnabled;
     if (loopEnabled) {
       sequencePart.loopStart = subdivision;
-      sequencePart.loopEnd = sequence.length * subdivision;
-    }
-    Tone.Transport.stop();
-    Tone.Transport.cancel();
-    Tone.Transport.position = 0;
-    scheduleCountIn(countInBeats, beatSeconds);
-    sequencePart.start(countInSeconds);
-    Tone.Transport.start();
+    sequencePart.loopEnd = sequence.length * subdivision;
   }
+  Tone.Transport.stop();
+  Tone.Transport.cancel();
+  Tone.Transport.loop = false;
+  Tone.Transport.loopStart = 0;
+  Tone.Transport.loopEnd = 0;
+  Tone.Transport.position = 0;
+  scheduleCountIn(countInBeats, beatSeconds);
+  sequencePart.start(countInSeconds);
+  Tone.Transport.start();
+}
 } 
 
 export function stopAll(): void {
@@ -129,6 +132,9 @@ export function stopAll(): void {
   }
   disposeSequence();
   Tone.Transport.stop();
+  Tone.Transport.loop = false;
+  Tone.Transport.loopStart = 0;
+  Tone.Transport.loopEnd = 0;
   Tone.Transport.position = 0;
   emitNotePlay(null, null);
 }

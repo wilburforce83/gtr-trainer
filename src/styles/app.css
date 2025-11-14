@@ -391,6 +391,10 @@ body {
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4);
 }
 
+.progression-cell.playing {
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6), 0 0 12px rgba(56, 189, 248, 0.3);
+}
+
 .progression-cell.locked {
   border-style: dashed;
 }
@@ -426,6 +430,22 @@ body {
 
 .progression-cell.drop-after::after {
   right: -0.4rem;
+}
+
+.playback-indicator {
+  position: absolute;
+  inset: 0.35rem;
+  pointer-events: none;
+}
+
+.playback-indicator span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, #38bdf8 0%, #f0f9ff 50%, #38bdf8 100%);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.85);
+  transform: translateX(-50%);
 }
 
 .progression-cell header {

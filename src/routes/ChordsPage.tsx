@@ -31,6 +31,7 @@ import {
   setDelayAmount as applyDelayAmount,
   setChorusAmount as applyChorusAmount,
   setBassLevel as applyBassLevel,
+  addChordPlaybackListener,
   setAmpProfile as applyAmpProfile,
   setInstrument as applyInstrument,
   setInstrumentOctaveShift as applyInstrumentOctaveShift,
@@ -135,6 +136,13 @@ export default function ChordsPage() {
   const [drumPatternIndex, setDrumPatternIndex] = useState(0);
   const [mixerSettings, setMixerSettings] = useState<DrumMixerSettings>(DEFAULT_DRUM_MIXER);
   const drumsEnabled = drumPatternIndex !== -1;
+  const [playbackIndicator, setPlaybackIndicator] = useState<{ index: number; duration: number; startedAt: number } | null>(null);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
+  const isPlayingRef = useRef(isPlaying);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -377,6 +385,47 @@ useEffect(() => {
     setDrumMixer(mixerSettings);
   }, [mixerSettings]);
 
+  useEffect(() => {
+    const unsubscribe = addChordPlaybackListener((event) => {
+      if (!isPlayingRef.current) {
+        return;
+      }
+      const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      setSelectedIndex(event.index);
+      setPlaybackIndicator({ index: event.index, duration: event.duration, startedAt });
+      setPlaybackProgress(0);
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!playbackIndicator || !isPlaying || typeof window === 'undefined') {
+      setPlaybackProgress(0);
+      return;
+    }
+    let raf: number;
+    const durationMs = playbackIndicator.duration * 1000;
+    const tick = () => {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const progress = durationMs > 0 ? Math.min(1, (now - playbackIndicator.startedAt) / durationMs) : 1;
+      setPlaybackProgress(progress);
+      if (progress < 1 && isPlayingRef.current) {
+        raf = window.requestAnimationFrame(tick);
+      }
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(raf);
+    };
+  }, [playbackIndicator, isPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      setPlaybackIndicator(null);
+      setPlaybackProgress(0);
+    }
+  }, [isPlaying]);
+
   const soloInstrument = useMemo(() => getInstrument(soloInstrumentId), [soloInstrumentId]);
   const soloTuning = useMemo(() => getInstrumentTuning(soloInstrument, soloTuningId), [soloInstrument, soloTuningId]);
 
@@ -571,6 +620,8 @@ useEffect(() => {
     if (!cells.length) {
       return;
     }
+    setPlaybackIndicator(null);
+    setPlaybackProgress(0);
     const tempoReady = await setTransportBpm(bpm);
     if (!tempoReady) {
       return;
@@ -589,6 +640,8 @@ useEffect(() => {
   const handleStop = () => {
     stopPlayback();
     setIsPlaying(false);
+    setPlaybackIndicator(null);
+    setPlaybackProgress(0);
   };
 
   const handleReverbChange = (value: number) => {
@@ -744,6 +797,8 @@ useEffect(() => {
             cells={cells}
             bars={bars}
             selectedIndex={selectedIndex}
+            playbackIndex={isPlaying ? playbackIndicator?.index ?? null : null}
+            playbackProgress={playbackProgress}
             onSelect={handleSelectCell}
             onToggleLock={handleToggleLock}
             onReharmonize={handleReharmonize}

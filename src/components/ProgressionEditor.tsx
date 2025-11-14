@@ -5,6 +5,8 @@ type Props = {
   cells: HarmonyCell[];
   bars: number;
   selectedIndex: number | null;
+  playbackIndex: number | null;
+  playbackProgress: number;
   onSelect(index: number): void;
   onToggleLock(index: number): void;
   onReharmonize(index: number): void;
@@ -16,6 +18,8 @@ export default function ProgressionEditor({
   cells,
   bars,
   selectedIndex,
+  playbackIndex,
+  playbackProgress,
   onSelect,
   onToggleLock,
   onReharmonize,
@@ -116,6 +120,8 @@ export default function ProgressionEditor({
       >
         {cells.map((cell) => {
           const isSelected = selectedIndex === cell.index;
+          const isPlayingCell = playbackIndex === cell.index;
+          const indicatorPosition = isPlayingCell ? Math.min(100, Math.max(0, playbackProgress * 100)) : 0;
           const dragTarget = dragOverIndex ?? dragIndex;
           const movingForward = dragIndex !== null && dragTarget !== null && dragTarget > dragIndex;
           const movingBackward = dragIndex !== null && dragTarget !== null && dragTarget < dragIndex;
@@ -129,6 +135,7 @@ export default function ProgressionEditor({
           const classNames = [
             'progression-cell',
             isSelected ? 'selected' : '',
+            isPlayingCell ? 'playing' : '',
             cell.locked ? 'locked' : '',
             dragIndex === cell.index ? 'drag-source' : '',
             shouldShiftForward ? 'shift-forward' : '',
@@ -206,6 +213,11 @@ export default function ProgressionEditor({
                     Rest
                   </button>
                 </menu>
+              )}
+              {isPlayingCell && (
+                <div className="playback-indicator" aria-hidden="true">
+                  <span style={{ left: `${indicatorPosition}%` }} />
+                </div>
               )}
             </div>
           );
