@@ -2,21 +2,19 @@ import type { DrumBar, DrumHit } from '../../drums/types';
 import { randomSample } from '../samples';
 
 export type PatternBuilder = (barCount: number, swing: number) => DrumBar[];
+export type PatternDefinition = {
+  name: string;
+  builder: PatternBuilder;
+};
 
 export const SUBDIVISIONS_PER_BAR = 16;
 
-// -----------------------------------------------------------------------------
-// Humanisation helpers
-// -----------------------------------------------------------------------------
-
 export type HumanizeOptions = {
-  /** Max +/- change in velocity (0–1 scale). Default: 0 (no jitter). */
   velocityJitter?: number;
-  /** Max +/- ms timing offset. Default: 0 (no jitter). */
   offsetJitterMs?: number;
 };
 
-type HitOptions = {
+export type HitOptions = {
   swing?: number;
   open?: boolean;
   rim?: boolean;
@@ -25,30 +23,15 @@ type HitOptions = {
   type?: 'crash' | 'pedal';
 } & HumanizeOptions;
 
-function applyHumanization(
-  baseVelocity: number,
-  baseOffsetMs: number | undefined,
-  options?: HumanizeOptions,
-): { velocity: number; offsetMs: number } {
-  const jitterV = options?.velocityJitter ?? 0;
-  const jitterT = options?.offsetJitterMs ?? 0;
-
-  const velocity =
-    jitterV > 0
-      ? baseVelocity + (Math.random() * 2 - 1) * jitterV
-      : baseVelocity;
-
-  const offsetMs =
-    jitterT > 0
-      ? (baseOffsetMs ?? 0) + (Math.random() * 2 - 1) * jitterT
-      : baseOffsetMs ?? 0;
-
-  return { velocity: clampVelocity(velocity), offsetMs };
-}
-
-// -----------------------------------------------------------------------------
-// Pattern builder
-// -----------------------------------------------------------------------------
+type SampleToken =
+  | 'kick'
+  | 'snare'
+  | 'rimshot'
+  | 'hatsClosed'
+  | 'hatsOpen'
+  | 'hatsPedal'
+  | 'crash'
+  | string;
 
 export function buildPattern(
   barCount: number,
@@ -63,184 +46,39 @@ export function buildPattern(
   return bars;
 }
 
-// -----------------------------------------------------------------------------
-// SIMPLE / VERBATIM FUNCTIONS (no timbral randomisation)
-// -----------------------------------------------------------------------------
-
-export function addSnareBackbeatSimple(
-  bar: DrumBar,
-  velocity = 0.9,
-  options: HitOptions = {},
-): void {
+export function addSnareBackbeatSimple(bar: DrumBar, velocity = 0.9, options: HitOptions = {}): void {
   addSnareSimple(bar, 4, velocity, options);
   addSnareSimple(bar, 12, velocity, options);
 }
 
-/**
- * SIMPLE backbeat by default – this is the version your patterns should usually use.
- * If you want the older randomised backbeat, call addSnareBackbeatRandom instead.
- */
 export function addSnareBackbeat(bar: DrumBar, velocity = 0.9): void {
   addSnareBackbeatSimple(bar, velocity);
 }
 
-export function addKickSimple(
-  bar: DrumBar,
-  subdivision: number,
-  velocity: number,
-  options: HitOptions = {},
-): void {
-  const { velocity: v, offsetMs } = applyHumanization(
-    velocity,
-    options.offsetMs,
-    options,
-  );
-  bar.kick.push(buildHit(subdivision, 'kick', v, { swing: options.swing, offsetMs }));
+export function addKickSimple(bar: DrumBar, subdivision: number, velocity: number, options: HitOptions = {}): void {
+  addHitToLane(bar.kick, subdivision, 'kick', velocity, options);
 }
 
-export function addSnareSimple(
-  bar: DrumBar,
-  subdivision: number,
-  velocity: number,
-  options: HitOptions = {},
-): void {
-  const sample = options.rim ? 'rimshot' : 'snare';
-  const { velocity: v, offsetMs } = applyHumanization(
-    velocity,
-    options.offsetMs,
-    options,
-  );
-  bar.snare.push(
-    buildHit(subdivision, sample, v, { swing: options.swing, offsetMs }),
-  );
+export function addSnareSimple(bar: DrumBar, subdivision: number, velocity: number, options: HitOptions = {}): void {
+  const token: SampleToken = options.rim ? 'rimshot' : 'snare';
+  addHitToLane(bar.snare, subdivision, token, velocity, options);
 }
 
-export function addHatSimple(
-  bar: DrumBar,
-  subdivision: number,
-  velocity: number,
-  options: HitOptions = {},
-): void {
-  const sample = options.open ? 'hatsOpen' : 'hatsClosed';
-  const { velocity: v, offsetMs } = applyHumanization(
-    velocity,
-    options.offsetMs,
-    options,
-  );
-  bar.hats.push(
-    buildHit(subdivision, sample, v, { swing: options.swing, offsetMs }),
-  );
+export function addHatSimple(bar: DrumBar, subdivision: number, velocity: number, options: HitOptions = {}): void {
+  const token: SampleToken = options.open ? 'hatsOpen' : 'hatsClosed';
+  addHitToLane(bar.hats, subdivision, token, velocity, options);
 }
 
-export function addPercussionSimple(
-  bar: DrumBar,
-  subdivision: number,
-  velocity: number,
-  options: HitOptions = {},
-): void {
-  const sample = options.type === 'pedal' ? 'hatsPedal' : 'crash';
-  const { velocity: v, offsetMs } = applyHumanization(
-    velocity,
-    options.offsetMs,
-    options,
-  );
-  bar.percussion.push(
-    buildHit(subdivision, sample, v, { swing: options.swing, offsetMs }),
-  );
+export function addPercussionSimple(bar: DrumBar, subdivision: number, velocity: number, options: HitOptions = {}): void {
+  const token: SampleToken = options.type === 'pedal' ? 'hatsPedal' : 'crash';
+  addHitToLane(bar.percussion, subdivision, token, velocity, options);
 }
 
-// -----------------------------------------------------------------------------
-// RANDOMISED / CHARACTERFUL FUNCTIONS (use randomSample)
-// -----------------------------------------------------------------------------
-
-export function addKickRandom(
-  bar: DrumBar,
-  subdivision: number,
-  velocity: number,
-  options: HitOptions = {},
-): void {
-  const { velocity: v, offsetMs } = applyHumanization(
-    velocity,
-    options.offsetMs,
-    options,
-  );
-  bar.kick.push(
-    buildHit(subdivision, randomSample('kick'), v, {
-      swing: options.swing,
-      offsetMs,
-    }),
-  );
-}
-
-/** Old behaviour of addSnare (random pool). */
-export function addSnareRandom(
-  bar: DrumBar,
-  subdivision: number,
-  velocity: number,
-  options: HitOptions = {},
-): void {
-  const sample = options.rim ? randomSample('rimshot') : randomSample('snare');
-  const { velocity: v, offsetMs } = applyHumanization(
-    velocity,
-    options.offsetMs,
-    options,
-  );
-  bar.snare.push(
-    buildHit(subdivision, sample, v, { swing: options.swing, offsetMs }),
-  );
-}
-
-/** Old behaviour of addHat (random pool). */
-export function addHatRandom(
-  bar: DrumBar,
-  subdivision: number,
-  velocity: number,
-  options: HitOptions = {},
-): void {
-  const sample = options.open
-    ? randomSample('hatsOpen')
-    : randomSample('hatsClosed');
-  const { velocity: v, offsetMs } = applyHumanization(
-    velocity,
-    options.offsetMs,
-    options,
-  );
-  bar.hats.push(
-    buildHit(subdivision, sample, v, { swing: options.swing, offsetMs }),
-  );
-}
-
-/** Old behaviour of addPercussion (random pool). */
-export function addPercussionRandom(
-  bar: DrumBar,
-  subdivision: number,
-  velocity: number,
-  options: HitOptions = {},
-): void {
-  const pool = options.type === 'pedal' ? 'hatsPedal' : 'crash';
-  const sample = pool === 'crash' ? randomSample('crash') : randomSample('hatsPedal');
-  const { velocity: v, offsetMs } = applyHumanization(
-    velocity,
-    options.offsetMs,
-    options,
-  );
-  bar.percussion.push(
-    buildHit(subdivision, sample, v, { swing: options.swing, offsetMs }),
-  );
-}
-
-export function addSnareBackbeatRandom(
-  bar: DrumBar,
-  velocity = 0.9,
-  options: HitOptions = {},
-): void {
-  addSnareRandom(bar, 4, velocity, options);
-  addSnareRandom(bar, 12, velocity, options);
-}
-
-// -----------------------------------------------------------------------------
-// Hat fillers – now use SIMPLE hats by default
-// -----------------------------------------------------------------------------
+// Backwards-compatible aliases
+export const addKick = addKickSimple;
+export const addSnare = addSnareSimple;
+export const addHat = addHatSimple;
+export const addPercussion = addPercussionSimple;
 
 type EvenHatOptions = {
   step: number;
@@ -250,18 +88,16 @@ type EvenHatOptions = {
   dropoutSlots?: number[];
 } & HumanizeOptions;
 
-export function fillEvenHats(
-  bar: DrumBar,
-  { step, baseVelocity, accentEvery, swing, dropoutSlots, velocityJitter, offsetJitterMs }: EvenHatOptions,
-): void {
+export function fillEvenHats(bar: DrumBar, options: EvenHatOptions): void {
+  const { step, baseVelocity, accentEvery, swing, dropoutSlots, ...humanize } = options;
   for (let slot = 0; slot < SUBDIVISIONS_PER_BAR; slot += step) {
-    if (dropoutSlots?.includes(slot)) continue;
+    if (dropoutSlots?.includes(slot)) {
+      continue;
+    }
     const accent = accentEvery > 0 && slot % accentEvery === 0;
-    const velocity = accent ? baseVelocity + 0.08 : baseVelocity;
-    addHatSimple(bar, slot, velocity, {
+    addHatSimple(bar, slot, accent ? baseVelocity + 0.08 : baseVelocity, {
       swing,
-      velocityJitter,
-      offsetJitterMs,
+      ...humanize,
     });
   }
 }
@@ -270,19 +106,57 @@ export function fillShuffleHats(
   bar: DrumBar,
   swing: number,
   accentEvery: number,
-  options: HumanizeOptions = {},
+  humanize: HumanizeOptions = {},
 ): void {
   const slots = [0, 3, 6, 9, 12, 15];
-  slots.forEach((slot, i) => {
-    const accent = accentEvery > 0 && i % accentEvery === 0;
-    const velocity = accent ? 0.78 : 0.66;
-    addHatSimple(bar, slot, velocity, { swing, ...options });
+  slots.forEach((slot) => {
+    const accent = accentEvery > 0 && (slot / 3) % accentEvery === 0;
+    addHatSimple(bar, slot, accent ? 0.78 : 0.66, {
+      swing,
+      ...humanize,
+    });
   });
 }
 
-// -----------------------------------------------------------------------------
-// Internal helpers
-// -----------------------------------------------------------------------------
+function addHitToLane(
+  lane: DrumHit[],
+  subdivision: number,
+  token: SampleToken,
+  baseVelocity: number,
+  options: HitOptions,
+): void {
+  const { velocity, offsetMs } = applyHumanization(baseVelocity, options.offsetMs, options);
+  const sample = resolveSample(token);
+  lane.push(
+    buildHit(subdivision, sample, velocity, {
+      swing: options.swing,
+      offsetMs,
+    }),
+  );
+}
+
+function resolveSample(token: SampleToken): string {
+  if (token.endsWith('.wav')) {
+    return token;
+  }
+  switch (token) {
+    case 'kick':
+      return randomSample('kick');
+    case 'rimshot':
+      return randomSample('rimshot');
+    case 'snare':
+      return randomSample('snare');
+    case 'hatsOpen':
+      return randomSample('hatsOpen');
+    case 'hatsClosed':
+      return randomSample('hatsClosed');
+    case 'hatsPedal':
+      return randomSample('hatsPedal');
+    case 'crash':
+    default:
+      return randomSample('crash');
+  }
+}
 
 function createEmptyBar(): DrumBar {
   return {
@@ -293,12 +167,7 @@ function createEmptyBar(): DrumBar {
   };
 }
 
-function buildHit(
-  subdivision: number,
-  sample: string,
-  velocity: number,
-  options: { swing?: number; offsetMs?: number } = {},
-): DrumHit {
+function buildHit(subdivision: number, sample: string, velocity: number, options: { swing?: number; offsetMs?: number }): DrumHit {
   return {
     subdivision: clampSubdivision(subdivision),
     sample,
@@ -308,14 +177,30 @@ function buildHit(
   };
 }
 
+function applyHumanization(baseVelocity: number, baseOffsetMs = 0, options: HumanizeOptions) {
+  const velocityJitter = options.velocityJitter ?? 0;
+  const offsetJitterMs = options.offsetJitterMs ?? 0;
+  const velocity = clampVelocity(baseVelocity + (Math.random() * 2 - 1) * velocityJitter);
+  const offsetMs = baseOffsetMs + (Math.random() * 2 - 1) * offsetJitterMs;
+  return { velocity, offsetMs };
+}
+
 function clampSubdivision(value: number): number {
-  if (value < 0) return 0;
-  if (value >= SUBDIVISIONS_PER_BAR) return SUBDIVISIONS_PER_BAR - 1;
+  if (value < 0) {
+    return 0;
+  }
+  if (value >= SUBDIVISIONS_PER_BAR) {
+    return SUBDIVISIONS_PER_BAR - 1;
+  }
   return value;
 }
 
 function clampVelocity(value: number): number {
-  if (value < 0.15) return 0.15;
-  if (value > 1) return 1;
+  if (value < 0.05) {
+    return 0.05;
+  }
+  if (value > 1) {
+    return 1;
+  }
   return Number.parseFloat(value.toFixed(3));
 }

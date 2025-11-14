@@ -38,6 +38,7 @@ import {
 } from '../chords/audio';
 import { setSamplerVolume } from '../lib/samplePlayer';
 import { generateDrumPattern } from '../drums/generator';
+import { getPatternDefinitions } from '../drums/patterns';
 import { setDrumMixer } from '../drums/audio';
 import type { DrumMixerSettings } from '../drums/types';
 import { DEFAULT_DRUM_MIXER, clampMixerValue } from '../drums/types';
@@ -72,13 +73,6 @@ type PanelTab = 'voicings' | 'change' | 'alt' | 'info';
 
 const CELLS_PER_BAR = 2;
 const { reverb: DEFAULT_REVERB, tone: DEFAULT_TONE, tape: DEFAULT_TAPE } = DEFAULT_EFFECT_SETTINGS;
-const DRUM_PATTERN_CHOICES: Array<{ value: number; label: string }> = [
-  { value: -1, label: 'Off' },
-  { value: 0, label: 'Pattern 1' },
-  { value: 1, label: 'Pattern 2' },
-  { value: 2, label: 'Pattern 3' },
-  { value: 3, label: 'Pattern 4' },
-];
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 const readEffectValue = (value: unknown, fallback: number) => (typeof value === 'number' ? clamp01(value) : fallback);
@@ -172,7 +166,7 @@ export default function ChordsPage() {
       }
       const storedPatternIndex =
         typeof parsed.drumPatternIndex === 'number'
-          ? clampPatternIndex(parsed.drumPatternIndex)
+          ? Math.round(parsed.drumPatternIndex)
           : parsed.drumsEnabled === false
             ? -1
             : 0;
@@ -243,6 +237,18 @@ export default function ChordsPage() {
 
   const cellsRef = useRef<HarmonyCell[]>(cells);
 
+  const patternDefinitions = useMemo(() => getPatternDefinitions(style), [style]);
+  const drumPatternChoices = useMemo(
+    () => [
+      { value: -1, label: 'Off' },
+      ...patternDefinitions.map((definition, index) => ({
+        value: index,
+        label: definition.name || `Pattern ${index + 1}`,
+      })),
+    ],
+    [patternDefinitions],
+  );
+
   const createDrumPattern = useCallback(() => {
     if (drumPatternIndex < 0) {
       return null;
@@ -250,9 +256,25 @@ export default function ChordsPage() {
     return generateDrumPattern({ style, barCount: bars, patternIndex: drumPatternIndex });
   }, [style, bars, drumPatternIndex]);
 
+useEffect(() => {
+  cellsRef.current = cells;
+}, [cells]);
+
   useEffect(() => {
-    cellsRef.current = cells;
-  }, [cells]);
+    setDrumPatternIndex((current) => {
+      if (current === -1) {
+        return current;
+      }
+      const maxIndex = patternDefinitions.length - 1;
+      if (maxIndex < 0) {
+        return -1;
+      }
+      if (current > maxIndex) {
+        return maxIndex;
+      }
+      return current;
+    });
+  }, [patternDefinitions]);
 
   const handleGenerate = useCallback(
     (preserveLocks = true) => {
@@ -571,7 +593,17 @@ export default function ChordsPage() {
   };
 
   const handleDrumPatternChange = (value: number) => {
-    setDrumPatternIndex(clampPatternIndex(value));
+    if (value <= -1) {
+      setDrumPatternIndex(-1);
+      return;
+    }
+    const maxIndex = patternDefinitions.length - 1;
+    if (maxIndex < 0) {
+      setDrumPatternIndex(-1);
+      return;
+    }
+    const clamped = Math.max(0, Math.min(maxIndex, Math.round(value)));
+    setDrumPatternIndex(clamped);
   };
 
   const handleSongLoad = (payload: SongPayload) => {
@@ -584,7 +616,7 @@ export default function ChordsPage() {
     setSelectedIndex(payload.cells[0]?.index ?? null);
     const nextPatternIndex =
       typeof payload.drumPatternIndex === 'number'
-        ? clampPatternIndex(payload.drumPatternIndex)
+        ? Math.round(payload.drumPatternIndex)
         : payload.drumsEnabled === false
           ? -1
           : 0;
@@ -854,7 +886,7 @@ export default function ChordsPage() {
             octaveShiftOptions={PIANO_OCTAVE_OPTIONS}
             onOctaveShiftChange={handlePianoOctaveShiftChange}
             drumPatternIndex={drumPatternIndex}
-            drumPatternOptions={DRUM_PATTERN_CHOICES}
+            drumPatternOptions={drumPatternChoices}
             onDrumPatternChange={handleDrumPatternChange}
             onOpenMixer={() => setShowMixerModal(true)}
           />
@@ -948,18 +980,6 @@ function readMixerSettings(input: unknown): DrumMixerSettings {
   return base;
 }
 
-function clampPatternIndex(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  if (value < -1) {
-    return -1;
-  }
-  if (value > 3) {
-    return 3;
-  }
-  return Math.round(value);
-}
 
 function exportProgressionJson(payload: { key: string; mode: string; style: string; bpm: number; cells: HarmonyCell[] }) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });

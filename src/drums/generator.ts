@@ -1,6 +1,6 @@
 import type { StyleName } from '../chords/types';
 import type { DrumPattern } from './types';
-import { PATTERN_LIBRARY } from './patterns';
+import { getPatternDefinitions } from './patterns';
 import { addTurnaroundMarkers } from './patterns/utils';
 
 const DEFAULT_BAR_COUNT = 8;
@@ -13,11 +13,11 @@ type GenerateOptions = {
 
 export function generateDrumPattern({ style, barCount = DEFAULT_BAR_COUNT, patternIndex = 0 }: GenerateOptions): DrumPattern {
   const sanitizedBars = clampBarCount(barCount);
+  const definitions = getPatternDefinitions(style);
+  const sanitizedPattern = clampPatternIndex(patternIndex, definitions.length);
+  const pattern = definitions[sanitizedPattern] ?? definitions[0];
   const swing = pickSwingAmount(style);
-  const patternSet = PATTERN_LIBRARY[style] ?? PATTERN_LIBRARY.pop;
-  const sanitizedPattern = clampPatternIndex(patternIndex, patternSet.length);
-  const builder = patternSet[sanitizedPattern] ?? patternSet[0];
-  const bars = builder(sanitizedBars, swing);
+  const bars = pattern.builder(sanitizedBars, swing);
   addTurnaroundMarkers(bars);
   return {
     id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `drm-${style}-${sanitizedPattern}-${sanitizedBars}`,
@@ -36,11 +36,11 @@ function clampBarCount(value: number): number {
 }
 
 function clampPatternIndex(value: number, total: number): number {
-  const max = Math.max(1, total);
+  const maxIndex = Math.max(1, total);
   if (!Number.isFinite(value)) {
     return 0;
   }
-  return Math.max(0, Math.min(max - 1, Math.round(value)));
+  return Math.max(0, Math.min(maxIndex - 1, Math.round(value)));
 }
 
 function pickSwingAmount(style: StyleName): number {

@@ -1,13 +1,17 @@
 import type { StyleName } from '../../chords/types';
-import type { PatternBuilder } from './shared';
+import type { PatternDefinition } from './shared';
 import { POP_PATTERNS } from './pop/pattern';
 import { NEO_SOUL_PATTERNS } from './neoSoul/pattern';
 import { LOFI_PATTERNS } from './lofi/pattern';
 import { BLUES_PATTERNS } from './blues/pattern';
 
-export const PATTERN_LIBRARY: Record<StyleName, PatternBuilder[]> = {
+export const PATTERN_LIBRARY: Record<StyleName, PatternDefinition[]> = {
   pop: POP_PATTERNS,
   'neo-soul': NEO_SOUL_PATTERNS,
   lofi: LOFI_PATTERNS,
   blues: BLUES_PATTERNS,
 };
+
+export function getPatternDefinitions(style: StyleName): PatternDefinition[] {
+  return PATTERN_LIBRARY[style] ?? PATTERN_LIBRARY.pop;
+}
