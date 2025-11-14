@@ -13,6 +13,7 @@ export type NoteMarker = {
   inCurrentPosition: boolean;
   degreeLabel?: string;
   rootFlavor?: ScaleFlavor;
+  degreeIndex?: number;
 };
 
 export const STANDARD_TUNING = ['E4', 'B3', 'G3', 'D3', 'A2', 'E2'];
@@ -49,6 +50,13 @@ export function buildNeckMarkers({
   const rootChroma = Note.chroma(normalizedKey) ?? 0;
   const scaleSet = new Set(scale.intervals.map((interval) => ((interval % 12) + 12) % 12));
   const degreeLabels = buildDegreeLabelMap(scale);
+  const degreeOrderMap = new Map<number, number>();
+  scale.intervals.forEach((interval, idx) => {
+    const normalized = ((interval % 12) + 12) % 12;
+    if (!degreeOrderMap.has(normalized)) {
+      degreeOrderMap.set(normalized, idx);
+    }
+  });
   const markers: NoteMarker[] = [];
 
   for (let stringNumber = 6; stringNumber >= 1; stringNumber -= 1) {
@@ -74,6 +82,7 @@ export function buildNeckMarkers({
         inCurrentPosition: highlighted?.has(id) ?? false,
         degreeLabel,
         rootFlavor: isRoot ? scale.flavor : undefined,
+        degreeIndex: inScale ? degreeOrderMap.get(interval) : undefined,
       });
     }
   }

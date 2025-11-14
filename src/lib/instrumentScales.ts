@@ -1,5 +1,6 @@
 import { Note } from '@tonaljs/tonal';
 import { getScaleById, getScaleByName } from '../scales';
+import { buildPositions } from './positions';
 import type { ScaleDef } from '../scales';
 import type { NoteMarker } from './neck';
 import type { SequenceToken } from './sequencing';
@@ -61,6 +62,10 @@ const DEGREE_SYMBOLS: Record<number, string> = {
   11: '7',
 };
 
+const PATTERN_SOURCE_OVERRIDES: Record<string, string> = {
+  bluesHexatonic: 'minorPentatonic',
+};
+
 export function noteNameToPc(name: NoteName): number {
   const pc = NOTE_TO_PC[name];
   if (typeof pc === 'number') {
@@ -103,6 +108,7 @@ export type InstrumentConfig = {
   tunings: InstrumentTuning[];
   frets: number;
   positions: number;
+  positionRadius?: number;
 };
 
 export const INSTRUMENTS: InstrumentConfig[] = [
@@ -117,6 +123,7 @@ export const INSTRUMENTS: InstrumentConfig[] = [
     ],
     frets: 22,
     positions: 5,
+    positionRadius: 2,
   },
   {
     id: 'bass',
@@ -128,6 +135,7 @@ export const INSTRUMENTS: InstrumentConfig[] = [
     ],
     frets: 20,
     positions: 4,
+    positionRadius: 1,
   },
   {
     id: 'ukulele',
@@ -139,6 +147,7 @@ export const INSTRUMENTS: InstrumentConfig[] = [
     ],
     frets: 15,
     positions: 4,
+    positionRadius: 1,
   },
   {
     id: 'mandolin',
@@ -149,6 +158,7 @@ export const INSTRUMENTS: InstrumentConfig[] = [
     ],
     frets: 15,
     positions: 4,
+    positionRadius: 1,
   },
   {
     id: 'banjo',
@@ -159,6 +169,7 @@ export const INSTRUMENTS: InstrumentConfig[] = [
     ],
     frets: 22,
     positions: 4,
+    positionRadius: 2,
   },
 ];
 
@@ -179,6 +190,10 @@ export type PositionWindow = {
 };
 
 export const DEFAULT_FRET_SPAN = 4;
+const DEFAULT_POSITION_RADIUS = 2;
+const MAX_INTERVAL_STEPS = 3;
+const MAX_FRET_DELTA = 6;
+const MAX_LOWER_STRING_SWAP_FRETS = 5;
 
 export function buildPositionWindows(instrument: InstrumentConfig, fretSpan = DEFAULT_FRET_SPAN): PositionWindow[] {
   const count = Math.max(1, instrument.positions);
@@ -269,6 +284,280 @@ function markersToSequence(markers: NoteMarker[]): SequenceToken[] {
   }));
 }
 
+type PatternPosition = {
+  ids: Set<string>;
+  startFret: number;
+  endFret: number;
+};
+
+type PatternPositionResult = {
+  positions: PatternPosition[];
+  canonicalScale: ScaleDef;
+};
+
+function getPatternTemplateScale(scale: ScaleDef): ScaleDef | null {
+  if (scale.positions === 'AUTO') {
+    return null;
+  }
+  if (scale.positions === '5BOX') {
+    if (scale.intervals.length === 5) {
+      return scale;
+    }
+    const overrideId = PATTERN_SOURCE_OVERRIDES[scale.id];
+    if (overrideId) {
+      return getScaleById(overrideId);
+    }
+    return null;
+  }
+  if (scale.positions === '7NPS') {
+    if (scale.intervals.length === 7) {
+      return scale;
+    }
+    return null;
+  }
+  return null;
+}
+
+function canUsePatternPositions(instrument: InstrumentConfig, scale: ScaleDef, tuningMidi: number[]): boolean {
+  if (instrument.id !== 'guitar' || tuningMidi.length !== 6) {
+    return false;
+  }
+  return Boolean(getPatternTemplateScale(scale));
+}
+
+function buildPatternPositions({
+  instrument,
+  key,
+  scale,
+  tuningMidi,
+}: {
+  instrument: InstrumentConfig;
+  key: string;
+  scale: ScaleDef;
+  tuningMidi: number[];
+}): PatternPositionResult | null {
+  if (!canUsePatternPositions(instrument, scale, tuningMidi)) {
+    return null;
+  }
+  const canonicalScale = getPatternTemplateScale(scale);
+  if (!canonicalScale) {
+    return null;
+  }
+  const patternResults = buildPositions({
+    key,
+    scale: canonicalScale,
+    tuningMidi,
+    maxFret: instrument.frets,
+  });
+  const positions = patternResults.map((position) => {
+    const frets = position.notes.map((note) => note.fret);
+    const startFret = frets.length ? Math.max(0, Math.min(...frets)) : 0;
+    const endFret = frets.length ? Math.min(instrument.frets, Math.max(...frets)) : 0;
+    return {
+      ids: position.idSet,
+      startFret,
+      endFret,
+    };
+  });
+  return { positions, canonicalScale };
+}
+
+type PositionClusterResult = {
+  kept: NoteMarker[];
+  centerFret: number;
+  minFret: number;
+  maxFret: number;
+};
+
+function refinePositionByCluster(markers: NoteMarker[], radius: number): PositionClusterResult {
+  if (!markers.length) {
+    return { kept: [], centerFret: 0, minFret: 0, maxFret: 0 };
+  }
+  const sortedFrets = markers
+    .map((marker) => marker.fret)
+    .sort((a, b) => a - b);
+  const middleIndex = Math.floor(sortedFrets.length / 2);
+  let centerFret = sortedFrets[middleIndex];
+  if (sortedFrets.length % 2 === 0 && sortedFrets.length > 1) {
+    const lower = sortedFrets[middleIndex - 1];
+    const upper = sortedFrets[middleIndex];
+    centerFret = Math.round((lower + upper) / 2);
+  }
+  const effectiveRadius = Math.max(0, Math.floor(radius));
+  const minFret = centerFret - effectiveRadius;
+  const maxFret = centerFret + effectiveRadius;
+  let kept = markers.filter((marker) => marker.fret >= minFret && marker.fret <= maxFret);
+
+  const byString = new Map<number, NoteMarker[]>();
+  markers.forEach((marker) => {
+    const list = byString.get(marker.string) ?? [];
+    list.push(marker);
+    byString.set(marker.string, list);
+  });
+
+  byString.forEach((list, stringNumber) => {
+    const hasKept = kept.some((marker) => marker.string === stringNumber);
+    if (!hasKept && list.length) {
+      let closest = list[0];
+      let bestDiff = Math.abs(closest.fret - centerFret);
+      for (let i = 1; i < list.length; i += 1) {
+        const diff = Math.abs(list[i].fret - centerFret);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          closest = list[i];
+        }
+      }
+      kept.push(closest);
+    }
+  });
+
+  const seen = new Set<string>();
+  const deduped = kept.filter((marker) => {
+    const key = `${marker.string}:${marker.fret}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+
+  return {
+    kept: deduped,
+    centerFret,
+    minFret,
+    maxFret,
+  };
+}
+
+function adjustPreferredKeysForLowerStrings(
+  preferredKeys: Set<string>,
+  scaleMap: Map<number, NoteMarker[]>,
+  markerLookup: Map<string, NoteMarker>,
+  stringCount: number,
+): Set<string> {
+  const adjusted = new Set(preferredKeys);
+  preferredKeys.forEach((key) => {
+    if (!adjusted.has(key)) {
+      return;
+    }
+    const marker = markerLookup.get(key);
+    if (!marker) {
+      return;
+    }
+    for (let string = marker.string + 1; string <= stringCount; string += 1) {
+      const candidates = scaleMap.get(string);
+      if (!candidates?.length) {
+        continue;
+      }
+      const swap = candidates.find(
+        (candidate) =>
+          candidate.midi === marker.midi &&
+          Math.abs(candidate.fret - marker.fret) <= MAX_LOWER_STRING_SWAP_FRETS,
+      );
+      if (swap) {
+        adjusted.delete(key);
+        adjusted.add(`${swap.string}:${swap.fret}`);
+        break;
+      }
+    }
+  });
+  return adjusted;
+}
+
+function enforceUniquePitchesPerPosition(
+  scaleMap: Map<number, NoteMarker[]>,
+  preferredKeys: Set<string>,
+  degreeCount: number,
+): NoteMarker[] {
+  if (!preferredKeys.size) {
+    return [];
+  }
+  const stringIndices = Array.from(scaleMap.keys()).sort((a, b) => b - a);
+  const usedMidis = new Set<number>();
+  const kept: NoteMarker[] = [];
+  const keptKeys = new Set<string>();
+  stringIndices.forEach((index) => {
+    const list = scaleMap.get(index);
+    if (!list?.length) {
+      return;
+    }
+    let stringHasPreferred = false;
+    list.forEach((marker) => {
+      if (preferredKeys.has(`${marker.string}:${marker.fret}`)) {
+        stringHasPreferred = true;
+      }
+    });
+    if (!stringHasPreferred) {
+      return;
+    }
+    list.forEach((marker, idx) => {
+      const key = `${marker.string}:${marker.fret}`;
+      if (!preferredKeys.has(key) || keptKeys.has(key)) {
+        return;
+      }
+      if (!usedMidis.has(marker.midi)) {
+        usedMidis.add(marker.midi);
+        kept.push(marker);
+        keptKeys.add(key);
+        return;
+      }
+      const promoted = findPromotionCandidate(
+        list,
+        idx + 1,
+        marker,
+        usedMidis,
+        keptKeys,
+        degreeCount,
+      );
+      if (promoted) {
+        const promotedKey = `${promoted.string}:${promoted.fret}`;
+        usedMidis.add(promoted.midi);
+        kept.push(promoted);
+        keptKeys.add(promotedKey);
+      }
+    });
+  });
+  kept.sort((a, b) => (a.string === b.string ? a.fret - b.fret : b.string - a.string));
+  return kept;
+}
+
+function findPromotionCandidate(
+  list: NoteMarker[],
+  startIndex: number,
+  baseMarker: NoteMarker,
+  usedMidis: Set<number>,
+  keptKeys: Set<string>,
+  degreeCount: number,
+): NoteMarker | null {
+  const baseDegreeIndex = typeof baseMarker.degreeIndex === 'number' ? baseMarker.degreeIndex : null;
+  if (baseDegreeIndex === null || degreeCount <= 0) {
+    return null;
+  }
+  const maxSteps = Math.min(MAX_INTERVAL_STEPS, Math.max(0, degreeCount - 1));
+  for (let step = 1; step <= maxSteps; step += 1) {
+    for (let i = startIndex; i < list.length; i += 1) {
+      const candidate = list[i];
+      const degreeIndex = typeof candidate.degreeIndex === 'number' ? candidate.degreeIndex : null;
+      if (degreeIndex === null) {
+        continue;
+      }
+      const diff = (degreeIndex - baseDegreeIndex + degreeCount) % degreeCount;
+      if (diff !== step) {
+        continue;
+      }
+      if (Math.abs(candidate.fret - baseMarker.fret) > MAX_FRET_DELTA) {
+        continue;
+      }
+      const key = `${candidate.string}:${candidate.fret}`;
+      if (keptKeys.has(key) || usedMidis.has(candidate.midi)) {
+        continue;
+      }
+      return candidate;
+    }
+  }
+  return null;
+}
+
 export function buildInstrumentScaleData({
   instrument,
   tuning,
@@ -294,19 +583,45 @@ export function buildInstrumentScaleData({
 } {
   const displayTuningMidi = [...tuning.notes].reverse();
   const tuningNotes = displayTuningMidi.map((midi) => Note.fromMidi(midi) ?? 'E');
-  const windows = buildPositionWindows(instrument, fretSpan);
+  const patternResult = buildPatternPositions({
+    instrument,
+    key,
+    scale,
+    tuningMidi: displayTuningMidi,
+  });
+  const patternPositions = patternResult?.positions ?? [];
+  const canonicalScale = patternResult?.canonicalScale ?? null;
+  const patternWindows: PositionWindow[] = patternPositions.map((position, idx) => ({
+    index: idx,
+    startFret: position.startFret,
+    endFret: position.endFret,
+  }));
+  const windows = patternWindows.length ? patternWindows : buildPositionWindows(instrument, fretSpan);
   const clampedPositionIndex = Math.min(Math.max(0, positionIndex), Math.max(0, windows.length - 1));
   const activeWindow = windows[clampedPositionIndex] ?? null;
+  const activePattern = patternPositions[clampedPositionIndex] ?? null;
   const { pcs, rootPc } = buildScalePcs(key, scale);
   const pcSet = new Set(pcs);
+  const canonicalPcSet = canonicalScale ? new Set(buildScalePcs(key, canonicalScale).pcs) : null;
+  const extraPcSet =
+    canonicalPcSet && canonicalScale && canonicalScale.id !== scale.id
+      ? new Set([...pcSet].filter((pc) => !canonicalPcSet.has(pc)))
+      : null;
   const intervalMap = new Map<number, string>();
-  scale.intervals.forEach((interval) => {
+  const degreeOrderMap = new Map<number, number>();
+  scale.intervals.forEach((interval, idx) => {
     const pcValue = ((rootPc + interval) % 12 + 12) % 12;
     intervalMap.set(pcValue, formatDegreeFromInterval(interval));
+    if (!degreeOrderMap.has(pcValue)) {
+      degreeOrderMap.set(pcValue, idx);
+    }
   });
+  const degreeCount = degreeOrderMap.size || scale.intervals.length;
   const degreeMap = buildDegreeLabelMap(scale);
   const markers: NoteMarker[] = [];
   const highlightIds = new Set<string>();
+  const scaleMap = new Map<number, NoteMarker[]>();
+  const markerLookup = new Map<string, NoteMarker>();
 
   for (let stringNumber = displayTuningMidi.length; stringNumber >= 1; stringNumber -= 1) {
     const openMidi = displayTuningMidi[stringNumber - 1];
@@ -318,8 +633,8 @@ export function buildInstrumentScaleData({
       const isRoot = pitchClass === rootPc;
       const id = `s${stringNumber}f${fret}`;
       const intervalPc = ((pitchClass - rootPc) % 12 + 12) % 12;
-      const inWindow = activeWindow ? fret >= activeWindow.startFret && fret <= activeWindow.endFret : false;
       const degree = intervalMap.get(pitchClass);
+      const degreeIndex = degreeOrderMap.get(pitchClass);
       const marker: NoteMarker = {
         id,
         string: stringNumber,
@@ -328,15 +643,79 @@ export function buildInstrumentScaleData({
         midi,
         inScale,
         isRoot,
-        inCurrentPosition: inScale && inWindow,
+        inCurrentPosition: false,
         degreeLabel: degree ?? (inScale ? degreeMap.get(intervalPc) : undefined),
         rootFlavor: isRoot ? scale.flavor : undefined,
+        degreeIndex,
       };
       markers.push(marker);
-      if (marker.inCurrentPosition) {
-        highlightIds.add(id);
+      markerLookup.set(id, marker);
+      if (marker.inScale) {
+        const list = scaleMap.get(marker.string) ?? [];
+        list.push(marker);
+        scaleMap.set(marker.string, list);
       }
     }
+  }
+  scaleMap.forEach((list) => list.sort((a, b) => a.fret - b.fret));
+
+  const canonicalIds = activePattern?.ids ?? null;
+
+  if (canonicalIds && canonicalIds.size) {
+    markers.forEach((marker) => {
+      const pitchClass = ((marker.midi % 12) + 12) % 12;
+      const inWindow = activePattern
+        ? marker.fret >= activePattern.startFret && marker.fret <= activePattern.endFret
+        : false;
+      const inCanonical = canonicalIds.has(marker.id);
+      const isExtra = Boolean(extraPcSet && extraPcSet.has(pitchClass) && inWindow);
+      marker.inCurrentPosition = marker.inScale && (inCanonical || isExtra);
+      if (marker.inCurrentPosition) {
+        highlightIds.add(marker.id);
+      }
+    });
+  } else if (activeWindow) {
+    const radius = instrument.positionRadius ?? DEFAULT_POSITION_RADIUS;
+    const windowCandidates = markers.filter(
+      (marker) => marker.inScale && marker.fret >= activeWindow.startFret && marker.fret <= activeWindow.endFret,
+    );
+    const refined = refinePositionByCluster(windowCandidates, radius);
+    const initialPreferred = new Set(refined.kept.map((marker) => `${marker.string}:${marker.fret}`));
+    const preferredKeys = adjustPreferredKeysForLowerStrings(
+      initialPreferred,
+      scaleMap,
+      markerLookup,
+      displayTuningMidi.length,
+    );
+    let kept = enforceUniquePitchesPerPosition(scaleMap, preferredKeys, degreeCount);
+    if (!kept.length) {
+      kept = refined.kept;
+    }
+    const keptKeys = new Set(kept.map((marker) => `${marker.string}:${marker.fret}`));
+    if (keptKeys.size) {
+      markers.forEach((marker) => {
+        const key = `${marker.string}:${marker.fret}`;
+        marker.inCurrentPosition = marker.inScale && keptKeys.has(key);
+        if (marker.inCurrentPosition) {
+          highlightIds.add(marker.id);
+        }
+      });
+    } else {
+      markers.forEach((marker) => {
+        const inWindow = marker.fret >= activeWindow.startFret && marker.fret <= activeWindow.endFret;
+        marker.inCurrentPosition = marker.inScale && inWindow;
+        if (marker.inCurrentPosition) {
+          highlightIds.add(marker.id);
+        }
+      });
+    }
+  } else {
+    markers.forEach((marker) => {
+      marker.inCurrentPosition = marker.inScale;
+      if (marker.inCurrentPosition) {
+        highlightIds.add(marker.id);
+      }
+    });
   }
 
   const sequence = markersToSequence(markers);
@@ -365,17 +744,28 @@ export function generateScalePositions(
   if (!scaleDef) {
     throw new Error(`Unknown scale: ${scaleName}`);
   }
-  const windows = buildPositionWindows(instrument, fretSpan);
   const tuningLabels = tuning.notes.map((midi) => formatNoteLabel(midi));
-  const positions = windows.map((_, index) => {
-    const data = buildInstrumentScaleData({
-      instrument,
-      tuning,
-      key: rootNote,
-      scale: scaleDef,
-      positionIndex: index,
-      fretSpan,
-    });
+  const firstData = buildInstrumentScaleData({
+    instrument,
+    tuning,
+    key: rootNote,
+    scale: scaleDef,
+    positionIndex: 0,
+    fretSpan,
+  });
+  const { windows } = firstData;
+  const positions = windows.map((window, index) => {
+    const data =
+      index === 0
+        ? firstData
+        : buildInstrumentScaleData({
+            instrument,
+            tuning,
+            key: rootNote,
+            scale: scaleDef,
+            positionIndex: index,
+            fretSpan,
+          });
     const frets = data.markers
       .filter((marker) => marker.inCurrentPosition)
       .map((marker) => ({
@@ -384,7 +774,7 @@ export function generateScalePositions(
         note: formatNoteLabel(marker.midi),
       }));
     return {
-      startFret: windows[index].startFret,
+      startFret: window.startFret,
       frets,
     };
   });
