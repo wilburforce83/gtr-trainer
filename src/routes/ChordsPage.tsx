@@ -30,6 +30,7 @@ import {
   setToneAmount as applyToneAmount,
   setDelayAmount as applyDelayAmount,
   setChorusAmount as applyChorusAmount,
+  setBassLevel as applyBassLevel,
   setAmpProfile as applyAmpProfile,
   setInstrument as applyInstrument,
   setInstrumentOctaveShift as applyInstrumentOctaveShift,
@@ -367,6 +368,10 @@ useEffect(() => {
   useEffect(() => {
     setSamplerVolume(mixerSettings.instrument).catch(() => {});
   }, [mixerSettings.instrument]);
+
+  useEffect(() => {
+    applyBassLevel(mixerSettings.bass);
+  }, [mixerSettings.bass]);
 
   useEffect(() => {
     setDrumMixer(mixerSettings);

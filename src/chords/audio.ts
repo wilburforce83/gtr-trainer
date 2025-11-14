@@ -1,5 +1,5 @@
 import * as Tone from 'tone';
-import { Chord } from '@tonaljs/tonal';
+import { Chord, Note } from '@tonaljs/tonal';
 import type { HarmonyCell } from './types';
 import type { Voicing } from './voicings';
 import { STANDARD_TUNING, tuningToMidi } from '../lib/neck';
@@ -33,6 +33,11 @@ type PlayOptions = {
 
 const DEFAULT_ARPEGGIO_SPREAD = 0.5;
 const ARPEGGIO_DIVISIONS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
+const BASS_OCTAVE = 2;
+
+let bassSynth: Tone.MonoSynth | null = null;
+let bassVolume: Tone.Volume | null = null;
+let bassLevel = 0.65;
 
 const tuningMidi = tuningToMidi(STANDARD_TUNING);
 let metronome: Tone.MembraneSynth | null = null;
@@ -53,6 +58,28 @@ async function ensureSamplerReady(): Promise<Tone.Sampler | null> {
   } catch {
     return null;
   }
+}
+
+async function ensureBassSynth(): Promise<boolean> {
+  if (!isBrowser()) {
+    return false;
+  }
+  try {
+    await Tone.start();
+  } catch {
+    return false;
+  }
+  if (bassSynth && bassVolume) {
+    return true;
+  }
+  bassVolume = new Tone.Volume(levelToDb(bassLevel)).toDestination();
+  bassSynth = new Tone.MonoSynth({
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.02, decay: 0.3, sustain: 0.5, release: 0.8 },
+    filter: { type: 'lowpass', rolloff: -24, frequency: 800 },
+    filterEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.4, release: 0.8, baseFrequency: 180, octaves: 1.2 },
+  }).connect(bassVolume);
+  return true;
 }
 
 export function primeChordAudioUnlock(): void {
@@ -81,6 +108,7 @@ export async function primeAudio(): Promise<boolean> {
     primeChordAudioUnlock();
     return false;
   }
+  await ensureBassSynth();
   return true;
 }
 
@@ -103,6 +131,7 @@ export async function playProgression(
 ): Promise<boolean> {
   const ready = await primeAudio();
   const sampler = await ensureSamplerReady();
+  const bassReady = await ensureBassSynth();
   if (!ready || !sampler) {
     return false;
   }
@@ -130,6 +159,7 @@ export async function playProgression(
       }
       const globalIndex = copy * cells.length + index;
       const position = cellIndexToPosition(globalIndex);
+      const bassNote = bassReady ? getBassNoteForCell(cell) : null;
       Tone.Transport.schedule((time) => {
         const voicing = cell.voicing;
         if (voicing) {
@@ -138,6 +168,9 @@ export async function playProgression(
         } else {
           const notes = chordSymbolToNotes(cell.symbol);
           triggerNotesWithSpread(sampler, notes, time, spread);
+        }
+        if (bassNote) {
+          triggerBassForCell(bassNote, time);
         }
       }, position);
     });
@@ -236,11 +269,47 @@ function chordSymbolToNotes(symbol: string): string[] {
   return chord.notes.map((note, idx) => `${note}${octaves[idx % octaves.length]}`);
 }
 
+function triggerBassForCell(note: string, time: number) {
+  if (!bassSynth) {
+    return;
+  }
+  bassSynth.triggerAttackRelease(note, '2n', time, 0.9);
+}
+
+function getBassNoteForCell(cell: HarmonyCell): string | null {
+  if (!cell.symbol || cell.symbol.toLowerCase() === 'rest') {
+    return null;
+  }
+  const chord = Chord.get(cell.symbol);
+  const tonic = chord.empty ? inferRootFromSymbol(cell.symbol) : chord.tonic ?? inferRootFromSymbol(cell.symbol);
+  const pitch = tonic ? Note.pitchClass(tonic) : null;
+  if (!pitch) {
+    return null;
+  }
+  return `${pitch}${BASS_OCTAVE}`;
+}
+
+function inferRootFromSymbol(symbol: string): string | null {
+  const match = symbol.match(/[A-G](?:#|b)?/i);
+  if (!match) {
+    return null;
+  }
+  const root = match[0];
+  return `${root[0].toUpperCase()}${root.slice(1)}`;
+}
+
 function cellIndexToPosition(index: number): string {
   const bar = Math.floor(index / 2);
   const half = index % 2;
   const beats = half * 2;
   return `${bar}:${beats}:0`;
+}
+
+export function setBassLevel(value: number): void {
+  bassLevel = clamp01(value);
+  if (bassVolume) {
+    bassVolume.volume.rampTo(levelToDb(bassLevel), 0.1);
+  }
 }
 
 function normalizeArpeggioSpread(value: unknown): number {
@@ -265,4 +334,24 @@ function quantizeArpeggioSpan(targetSpan: number, windowDuration: number): numbe
     }
   }
   return best;
+}
+
+function clamp01(value: number): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 0;
+  }
+  if (value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 1;
+  }
+  return value;
+}
+
+function levelToDb(value: number): number {
+  const min = -42;
+  const max = 6;
+  const clamped = clamp01(value);
+  return min + (max - min) * clamped;
 }

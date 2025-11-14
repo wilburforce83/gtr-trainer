@@ -27,6 +27,7 @@ export type DrumPattern = {
 
 export type DrumMixerSettings = {
   instrument: number;
+  bass: number;
   drumBus: number;
   kick: number;
   snare: number;
@@ -36,6 +37,7 @@ export type DrumMixerSettings = {
 
 export const DEFAULT_DRUM_MIXER: DrumMixerSettings = {
   instrument: 0.85,
+  bass: 0.65,
   drumBus: 0.78,
   kick: 0.85,
   snare: 0.82,

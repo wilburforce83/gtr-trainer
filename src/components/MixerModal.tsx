@@ -10,6 +10,7 @@ type Props = {
 
 const CHANNELS: Array<{ key: keyof DrumMixerSettings; label: string }> = [
   { key: 'instrument', label: 'Instrument' },
+  { key: 'bass', label: 'Bass' },
   { key: 'drumBus', label: 'Drum Bus' },
   { key: 'kick', label: 'Kick' },
   { key: 'snare', label: 'Snare/Rim' },
