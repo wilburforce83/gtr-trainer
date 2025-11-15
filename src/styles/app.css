@@ -1485,3 +1485,124 @@ button:disabled {
   background: #22c55e;
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.9);
 }
+
+.screen-gate {
+  min-height: 100vh;
+  padding: clamp(1.5rem, 4vw, 3rem);
+  background: radial-gradient(circle at top, rgba(59, 130, 246, 0.25), transparent 60%),
+    linear-gradient(135deg, #020617 0%, #050a1b 40%, #0f172a 100%);
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.screen-gate__shell {
+  width: min(1100px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.screen-gate__header {
+  max-width: 640px;
+}
+
+.screen-gate__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: 0.8rem;
+  color: #38bdf8;
+  margin-bottom: 0.4rem;
+}
+
+.screen-gate__header h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+}
+
+.screen-gate__header p {
+  margin: 0;
+  color: #cbd5f5;
+  line-height: 1.6;
+}
+
+.screen-gate__hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+.screen-gate__hero-copy {
+  flex: 1 1 320px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 22px;
+  padding: 1.5rem;
+  box-shadow: 0 20px 55px rgba(2, 6, 23, 0.75);
+}
+
+.screen-gate__hero-copy ul {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.screen-gate__hero-copy li {
+  background: rgba(2, 6, 23, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.screen-gate__hero-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #94a3b8;
+}
+
+.screen-gate__hero-copy strong {
+  font-size: 1.35rem;
+}
+
+.screen-gate__hero-copy small {
+  color: #94a3b8;
+}
+
+.screen-gate__badge {
+  margin-top: 0.25rem;
+  display: inline-block;
+  background: rgba(248, 113, 113, 0.2);
+  color: #fecaca;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.screen-gate__hint {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #cbd5f5;
+}
+
+.screen-gate__hero-visual {
+  flex: 1 1 320px;
+  border-radius: 22px;
+  background-image: linear-gradient(130deg, rgba(2, 6, 23, 0.25), rgba(2, 6, 23, 0.65)),
+    url('/images/home-guitar.jpg');
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  min-height: 320px;
+  box-shadow: inset 0 0 80px rgba(2, 6, 23, 0.4);
+}
