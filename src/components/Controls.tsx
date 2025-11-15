@@ -106,17 +106,16 @@ export function Controls({
 
       <div className="control-row positions">
         <span>Position</span>
-        <div className="position-radios">
+        <div className="position-buttons">
           {Array.from({ length: positionCount }, (_, idx) => (
-            <label key={`pos-${idx}`}>
-              <input
-                type="radio"
-                checked={positionIndex === idx}
-                onChange={() => onPositionChange(idx)}
-                name="position"
-              />
+            <button
+              type="button"
+              key={`pos-${idx}`}
+              className={positionIndex === idx ? 'active' : ''}
+              onClick={() => onPositionChange(idx)}
+            >
               {idx + 1}
-            </label>
+            </button>
           ))}
         </div>
       </div>
@@ -140,9 +139,20 @@ export function Controls({
             Reset
           </button>
         )}
-        <label className="toggle">
-          <input type="checkbox" checked={loop} onChange={(event) => onLoopToggle(event.target.checked)} /> Loop
-        </label>
+        <button
+          type="button"
+          className={`loop-toggle${loop ? ' active' : ''}`}
+          onClick={() => onLoopToggle(!loop)}
+          aria-pressed={loop}
+          aria-label={`Loop ${loop ? 'enabled' : 'disabled'}`}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              d="M17 5H7a4 4 0 00-4 4v1a1 1 0 102 0V9a2 2 0 012-2h8.59l-1.3 1.29a1 1 0 101.42 1.42l3.7-3.71a1 1 0 000-1.42L15.71 1.86a1 1 0 10-1.42 1.41L15.59 4H17zm-10 9h10a4 4 0 004-4v-1a1 1 0 10-2 0V10a2 2 0 01-2 2H8.41l1.3-1.29a1 1 0 10-1.42-1.42l-3.7 3.71a1 1 0 000 1.42l3.7 3.71a1 1 0 101.42-1.41L8.41 14H7z"
+              fill="currentColor"
+            />
+          </svg>
+        </button>
       </div>
     </section>
   );

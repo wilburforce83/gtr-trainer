@@ -38,7 +38,7 @@ function ScalesPage() {
   const [scaleId, setScaleId] = useState(DEFAULT_SCALE_ID);
   const [positionIndex, setPositionIndex] = useState(DEFAULT_POSITION_INDEX);
   const [bpm, setBpmValue] = useState(70);
-  const [loop, setLoop] = useState(false);
+  const [loop, setLoop] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const fretboardRef = useRef<HTMLDivElement>(null);
@@ -55,7 +55,14 @@ function ScalesPage() {
 
   const scaleDef: ScaleDef = useMemo(() => getScaleById(scaleId), [scaleId]);
 
-  const { markers, highlightIds, sequence, tuningNotes, windows, clampedPositionIndex } = useInstrumentScaleData({
+  const {
+    markers,
+    highlightIds,
+    sequence,
+    tuningNotes,
+    windows,
+    clampedPositionIndex,
+  } = useInstrumentScaleData({
     instrument,
     tuning,
     key: keyName,
@@ -69,6 +76,29 @@ function ScalesPage() {
       setPositionIndex(clampedPositionIndex);
     }
   }, [clampedPositionIndex, positionIndex]);
+
+  const AMBIENT_SCALE_COLOR = '#065577ff';
+  const ambientHighlight = useMemo(() => {
+    const ids = new Set<string>();
+    const colorMap = new Map<string, string>();
+    markers.forEach((marker) => {
+      if (marker.inScale && !marker.isRoot && !highlightIds.has(marker.id)) {
+        ids.add(marker.id);
+        colorMap.set(marker.id, AMBIENT_SCALE_COLOR);
+      }
+    });
+    return { ids, colorMap };
+  }, [markers, highlightIds]);
+
+  const combinedHighlightIds = useMemo(() => {
+    const combined = new Set<string>(highlightIds);
+    ambientHighlight.ids.forEach((id) => combined.add(id));
+    return combined;
+  }, [highlightIds, ambientHighlight]);
+
+  const highlightColorMap = useMemo(() => {
+    return new Map<string, string>(ambientHighlight.colorMap);
+  }, [ambientHighlight]);
 
   useEffect(() => {
     return () => {
@@ -170,7 +200,8 @@ function ScalesPage() {
         <div className="surface fretboard-container">
           <FretboardView
             markers={markers}
-            highlightIds={highlightIds}
+            highlightIds={combinedHighlightIds}
+            highlightColors={highlightColorMap}
             tuning={tuningNotes}
             frets={instrument.frets}
             ref={fretboardRef}
