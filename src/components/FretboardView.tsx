@@ -8,9 +8,10 @@ interface Props {
   highlightIds: Set<string>;
   tuning: string[];
   frets?: number;
+  highlightColors?: Map<string, string> | null;
 }
 
-const FretboardView = forwardRef<HTMLDivElement, Props>(({ markers, highlightIds, tuning, frets = 22 }, ref) => {
+const FretboardView = forwardRef<HTMLDivElement, Props>(({ markers, highlightIds, tuning, frets = 22, highlightColors = null }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fretboardRef = useRef<FretboardHandle | null>(null);
   const [renderWidth, setRenderWidth] = useState(0);
@@ -63,8 +64,8 @@ const FretboardView = forwardRef<HTMLDivElement, Props>(({ markers, highlightIds
   }, [markers]);
 
   useEffect(() => {
-    highlightPosition(fretboardRef.current, highlightIds);
-  }, [highlightIds, renderWidth]);
+    highlightPosition(fretboardRef.current, highlightIds, highlightColors ?? undefined);
+  }, [highlightIds, highlightColors, renderWidth]);
 
   useEffect(() => {
     const offHover = onNoteHover(({ id, source }) => {

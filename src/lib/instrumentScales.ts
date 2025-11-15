@@ -66,6 +66,44 @@ const PATTERN_SOURCE_OVERRIDES: Record<string, string> = {
   bluesHexatonic: 'minorPentatonic',
 };
 
+const POSITION_COLOR_PALETTE = ['#38bdf8', '#34d399', '#fbbf24', '#fb7185', '#c084fc', '#f472b6'];
+const UNASSIGNED_POSITION_COLOR = '#94a3b8';
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const normalized = hex.replace('#', '');
+  const int = parseInt(normalized, 16);
+  return {
+    r: (int >> 16) & 255,
+    g: (int >> 8) & 255,
+    b: int & 255,
+  };
+}
+
+function rgbToHex({ r, g, b }: { r: number; g: number; b: number }): string {
+  const clamp = (value: number) => Math.min(255, Math.max(0, Math.round(value)));
+  return `#${[clamp(r), clamp(g), clamp(b)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function blendColors(colors: string[]): string {
+  if (colors.length === 1) {
+    return colors[0];
+  }
+  const totals = colors.reduce(
+    (acc, color) => {
+      const rgb = hexToRgb(color);
+      acc.r += rgb.r;
+      acc.g += rgb.g;
+      acc.b += rgb.b;
+      return acc;
+    },
+    { r: 0, g: 0, b: 0 },
+  );
+  const count = colors.length;
+  return rgbToHex({ r: totals.r / count, g: totals.g / count, b: totals.b / count });
+}
+
 export function noteNameToPc(name: NoteName): number {
   const pc = NOTE_TO_PC[name];
   if (typeof pc === 'number') {
@@ -599,7 +637,6 @@ export function buildInstrumentScaleData({
   const windows = patternWindows.length ? patternWindows : buildPositionWindows(instrument, fretSpan);
   const clampedPositionIndex = Math.min(Math.max(0, positionIndex), Math.max(0, windows.length - 1));
   const activeWindow = windows[clampedPositionIndex] ?? null;
-  const activePattern = patternPositions[clampedPositionIndex] ?? null;
   const { pcs, rootPc } = buildScalePcs(key, scale);
   const pcSet = new Set(pcs);
   const canonicalPcSet = canonicalScale ? new Set(buildScalePcs(key, canonicalScale).pcs) : null;
@@ -619,7 +656,6 @@ export function buildInstrumentScaleData({
   const degreeCount = degreeOrderMap.size || scale.intervals.length;
   const degreeMap = buildDegreeLabelMap(scale);
   const markers: NoteMarker[] = [];
-  const highlightIds = new Set<string>();
   const scaleMap = new Map<number, NoteMarker[]>();
   const markerLookup = new Map<string, NoteMarker>();
 
@@ -659,66 +695,109 @@ export function buildInstrumentScaleData({
   }
   scaleMap.forEach((list) => list.sort((a, b) => a.fret - b.fret));
 
-  const canonicalIds = activePattern?.ids ?? null;
-
-  if (canonicalIds && canonicalIds.size) {
+  const computeHighlightSet = (index: number): Set<string> => {
+    const pattern = patternPositions[index] ?? null;
+    const window = windows[index] ?? null;
+    const highlight = new Set<string>();
+    const canonicalIds = pattern?.ids ?? null;
+    if (canonicalIds && canonicalIds.size) {
+      markers.forEach((marker) => {
+        const pitchClass = ((marker.midi % 12) + 12) % 12;
+        const inWindow =
+          pattern && typeof pattern.startFret === 'number' && typeof pattern.endFret === 'number'
+            ? marker.fret >= pattern.startFret && marker.fret <= pattern.endFret
+            : false;
+        const inCanonical = canonicalIds.has(marker.id);
+        const isExtra = Boolean(extraPcSet && extraPcSet.has(pitchClass) && inWindow);
+        if (marker.inScale && (inCanonical || isExtra)) {
+          highlight.add(marker.id);
+        }
+      });
+      return highlight;
+    }
+    if (window) {
+      const radius = instrument.positionRadius ?? DEFAULT_POSITION_RADIUS;
+      const windowCandidates = markers.filter(
+        (marker) => marker.inScale && marker.fret >= window.startFret && marker.fret <= window.endFret,
+      );
+      const refined = refinePositionByCluster(windowCandidates, radius);
+      const initialPreferred = new Set(refined.kept.map((marker) => `${marker.string}:${marker.fret}`));
+      const preferredKeys = adjustPreferredKeysForLowerStrings(
+        initialPreferred,
+        scaleMap,
+        markerLookup,
+        displayTuningMidi.length,
+      );
+      let kept = enforceUniquePitchesPerPosition(scaleMap, preferredKeys, degreeCount);
+      if (!kept.length) {
+        kept = refined.kept;
+      }
+      const keptKeys = new Set(kept.map((marker) => `${marker.string}:${marker.fret}`));
+      if (keptKeys.size) {
+        markers.forEach((marker) => {
+          const key = `${marker.string}:${marker.fret}`;
+          if (marker.inScale && keptKeys.has(key)) {
+            highlight.add(marker.id);
+          }
+        });
+      } else {
+        markers.forEach((marker) => {
+          const inWindowRange = marker.fret >= window.startFret && marker.fret <= window.endFret;
+          if (marker.inScale && inWindowRange) {
+            highlight.add(marker.id);
+          }
+        });
+      }
+      return highlight;
+    }
     markers.forEach((marker) => {
-      const pitchClass = ((marker.midi % 12) + 12) % 12;
-      const inWindow = activePattern
-        ? marker.fret >= activePattern.startFret && marker.fret <= activePattern.endFret
-        : false;
-      const inCanonical = canonicalIds.has(marker.id);
-      const isExtra = Boolean(extraPcSet && extraPcSet.has(pitchClass) && inWindow);
-      marker.inCurrentPosition = marker.inScale && (inCanonical || isExtra);
-      if (marker.inCurrentPosition) {
-        highlightIds.add(marker.id);
+      if (marker.inScale) {
+        highlight.add(marker.id);
       }
     });
-  } else if (activeWindow) {
-    const radius = instrument.positionRadius ?? DEFAULT_POSITION_RADIUS;
-    const windowCandidates = markers.filter(
-      (marker) => marker.inScale && marker.fret >= activeWindow.startFret && marker.fret <= activeWindow.endFret,
-    );
-    const refined = refinePositionByCluster(windowCandidates, radius);
-    const initialPreferred = new Set(refined.kept.map((marker) => `${marker.string}:${marker.fret}`));
-    const preferredKeys = adjustPreferredKeysForLowerStrings(
-      initialPreferred,
-      scaleMap,
-      markerLookup,
-      displayTuningMidi.length,
-    );
-    let kept = enforceUniquePitchesPerPosition(scaleMap, preferredKeys, degreeCount);
-    if (!kept.length) {
-      kept = refined.kept;
-    }
-    const keptKeys = new Set(kept.map((marker) => `${marker.string}:${marker.fret}`));
-    if (keptKeys.size) {
-      markers.forEach((marker) => {
-        const key = `${marker.string}:${marker.fret}`;
-        marker.inCurrentPosition = marker.inScale && keptKeys.has(key);
-        if (marker.inCurrentPosition) {
-          highlightIds.add(marker.id);
-        }
-      });
-    } else {
-      markers.forEach((marker) => {
-        const inWindow = marker.fret >= activeWindow.startFret && marker.fret <= activeWindow.endFret;
-        marker.inCurrentPosition = marker.inScale && inWindow;
-        if (marker.inCurrentPosition) {
-          highlightIds.add(marker.id);
-        }
-      });
-    }
+    return highlight;
+  };
+
+  const positionHighlightSets: Array<Set<string>> = [];
+  if (windows.length) {
+    windows.forEach((_, idx) => {
+      positionHighlightSets.push(computeHighlightSet(idx));
+    });
   } else {
-    markers.forEach((marker) => {
-      marker.inCurrentPosition = marker.inScale;
-      if (marker.inCurrentPosition) {
-        highlightIds.add(marker.id);
-      }
-    });
+    positionHighlightSets.push(computeHighlightSet(0));
   }
+  const highlightIds = positionHighlightSets[clampedPositionIndex] ?? positionHighlightSets[0] ?? new Set<string>();
 
+  const allPositionHighlightIds = new Set<string>();
+  positionHighlightSets.forEach((set) => {
+    set.forEach((id) => allPositionHighlightIds.add(id));
+  });
+  markers.forEach((marker) => {
+    marker.inCurrentPosition = highlightIds.has(marker.id);
+  });
   const sequence = markersToSequence(markers);
+
+  const membershipColors = new Map<string, string[]>();
+  positionHighlightSets.forEach((set, index) => {
+    const color = POSITION_COLOR_PALETTE[index % POSITION_COLOR_PALETTE.length];
+    set.forEach((id) => {
+      const list = membershipColors.get(id) ?? [];
+      list.push(color);
+      membershipColors.set(id, list);
+    });
+  });
+  const positionColorMap = new Map<string, string>();
+  membershipColors.forEach((colors, id) => {
+    positionColorMap.set(id, blendColors(colors));
+  });
+  markers.forEach((marker) => {
+    if (marker.inScale) {
+      allPositionHighlightIds.add(marker.id);
+      if (!positionColorMap.has(marker.id)) {
+        positionColorMap.set(marker.id, UNASSIGNED_POSITION_COLOR);
+      }
+    }
+  });
 
   return {
     markers,
@@ -728,6 +807,9 @@ export function buildInstrumentScaleData({
     windows,
     clampedPositionIndex,
     displayTuningMidi,
+    positionHighlights: positionHighlightSets,
+    allPositionHighlightIds,
+    positionColorMap,
   };
 }
 

@@ -4,6 +4,7 @@ import type { NoteMarker } from './neck';
 export type FretboardHandle = {
   board: any;
   highlighted: Set<string>;
+  highlightColors: Map<string, string> | null;
 };
 
 const DEFAULT_TUNING = ['E', 'A', 'D', 'G', 'B', 'E'];
@@ -45,7 +46,7 @@ export function mountFretboard(
     dotText: (dot: any) => dot.text ?? dot.note ?? '',
   });
   board.render();
-  return { board, highlighted: new Set<string>() };
+  return { board, highlighted: new Set<string>(), highlightColors: null };
 }
 
 export function renderNotes(handle: FretboardHandle | null, noteMarkers: NoteMarker[]): void {
@@ -63,14 +64,19 @@ export function renderNotes(handle: FretboardHandle | null, noteMarkers: NoteMar
     flavor: marker.rootFlavor ?? 'other',
   }));
   handle.board.setDots(dots).render();
-  highlightPosition(handle, handle.highlighted);
+  highlightPosition(handle, handle.highlighted, handle.highlightColors ?? undefined);
 }
 
-export function highlightPosition(handle: FretboardHandle | null, ids: Set<string> | null): void {
+export function highlightPosition(
+  handle: FretboardHandle | null,
+  ids: Set<string> | null,
+  colors?: Map<string, string>,
+): void {
   if (!handle) {
     return;
   }
   handle.highlighted = ids ?? new Set<string>();
+  handle.highlightColors = colors ?? null;
   const board = handle.board;
   board.style({
     filter: () => true,
@@ -86,7 +92,13 @@ export function highlightPosition(handle: FretboardHandle | null, ids: Set<strin
   });
   board.style({
     filter: (dot: any) => dot.role !== 'root' && handle.highlighted.has(`s${dot.string}f${dot.fret}`),
-    fill: ACTIVE_COLOR,
+    fill: (dot: any) => {
+      const key = `s${dot.string}f${dot.fret}`;
+      if (handle.highlightColors?.has(key)) {
+        return handle.highlightColors.get(key);
+      }
+      return ACTIVE_COLOR;
+    },
     fontFill: '#0f172a',
   });
 }

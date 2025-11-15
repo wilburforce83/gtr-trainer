@@ -130,6 +130,7 @@ export default function ChordsPage() {
   const [delayAmount, setDelayAmountState] = useState(DEFAULT_DELAY);
   const [chorusAmount, setChorusAmountState] = useState(DEFAULT_CHORUS);
   const [scalePositionIndex, setScalePositionIndex] = useState(DEFAULT_SCALE_POSITION_INDEX);
+  const [showAllPositions, setShowAllPositions] = useState(false);
   const [soloInstrumentId, setSoloInstrumentId] = useState<InstrumentId>(DEFAULT_SOLO_INSTRUMENT_ID);
   const [soloTuningId, setSoloTuningId] = useState(DEFAULT_SOLO_TUNING_ID);
   const [ampProfileId, setAmpProfileId] = useState(AMP_PROFILES[0].id);
@@ -442,6 +443,7 @@ useEffect(() => {
 
   useEffect(() => {
     setScalePositionIndex(DEFAULT_SCALE_POSITION_INDEX);
+    setShowAllPositions(false);
   }, [soloInstrumentId, soloTuningId]);
 
   const selectedCell = cells.find((cell) => cell.index === selectedIndex) ?? cells[0];
@@ -496,7 +498,11 @@ useEffect(() => {
     tuningNotes: soloTuningNotes,
     windows: soloWindows,
     clampedPositionIndex,
+    allPositionHighlightIds,
+    positionColorMap,
   } = soloScaleData;
+  const fretboardHighlightIds = showAllPositions ? allPositionHighlightIds : scaleHighlightIds;
+  const fretboardHighlightColors = showAllPositions ? positionColorMap : null;
 
   useEffect(() => {
     setScalePositionIndex((current) => (current === clampedPositionIndex ? current : clampedPositionIndex));
@@ -854,27 +860,38 @@ useEffect(() => {
                   </label>
                 </div>
                 <div className="scale-position-toggle">
+                  <button
+                    type="button"
+                    className={showAllPositions ? 'active' : ''}
+                    onClick={() => setShowAllPositions((prev) => !prev)}
+                  >
+                    A
+                  </button>
                   {soloWindows.length ? (
                     soloWindows.map((window) => (
                       <button
                         type="button"
                         key={`scale-pos-${window.index}`}
-                      className={window.index === scalePositionIndex ? 'active' : ''}
-                      onClick={() => setScalePositionIndex(window.index)}
-                    >
-                      {window.index + 1}
-                    </button>
-                  ))
-                ) : (
-                  <span className="muted">No positions</span>
-                )}
+                        className={window.index === scalePositionIndex && !showAllPositions ? 'active' : ''}
+                        onClick={() => {
+                          setShowAllPositions(false);
+                          setScalePositionIndex(window.index);
+                        }}
+                      >
+                        {window.index + 1}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="muted">No positions</span>
+                  )}
                 </div>
               </div>
             </div>
             <div className="scale-pane__board">
               <FretboardView
                 markers={scaleMarkers}
-                highlightIds={scaleHighlightIds}
+                highlightIds={fretboardHighlightIds}
+                highlightColors={fretboardHighlightColors}
                 tuning={soloTuningNotes}
                 frets={soloInstrument.frets}
               />
