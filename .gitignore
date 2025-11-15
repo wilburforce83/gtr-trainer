@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Reference material (PDF/PNG) is provided locally but not committed
+docs/reference_docs/

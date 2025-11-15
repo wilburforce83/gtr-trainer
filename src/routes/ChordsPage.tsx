@@ -9,6 +9,7 @@ import Transport from '../components/Transport';
 import SongManagerModal, { type SongPayload } from '../components/SongManagerModal';
 import SampleLoadingOverlay from '../components/SampleLoadingOverlay';
 import MixerModal from '../components/MixerModal';
+import ChordDirectoryModal from '../components/ChordDirectoryModal';
 import useInstrumentScaleData from '../hooks/useInstrumentScaleData';
 import {
   generateProgression,
@@ -136,6 +137,7 @@ export default function ChordsPage() {
   const [pianoOctaveShift, setPianoOctaveShift] = useState(DEFAULT_PIANO_OCTAVE_SHIFT);
   const [showSongModal, setShowSongModal] = useState(false);
   const [showMixerModal, setShowMixerModal] = useState(false);
+  const [showChordDirectory, setShowChordDirectory] = useState(false);
   const [drumPatternIndex, setDrumPatternIndex] = useState(DEFAULT_DRUM_PATTERN_INDEX);
   const [mixerSettings, setMixerSettings] = useState<DrumMixerSettings>(DEFAULT_DRUM_MIXER);
   const drumsEnabled = drumPatternIndex !== -1;
@@ -443,12 +445,22 @@ useEffect(() => {
   }, [soloInstrumentId, soloTuningId]);
 
   const selectedCell = cells.find((cell) => cell.index === selectedIndex) ?? cells[0];
+  const activeVoicingCell = useMemo(() => {
+    if (isPlaying && playbackIndicator) {
+      const playingCell = cells.find((cell) => cell.index === playbackIndicator.index);
+      if (playingCell) {
+        return playingCell;
+      }
+    }
+    return selectedCell ?? null;
+  }, [cells, isPlaying, playbackIndicator, selectedCell]);
+
   const voicingOptions = useMemo(() => {
-    if (!selectedCell) {
+    if (!activeVoicingCell) {
       return [];
     }
-    return getVoicingsForSymbol(selectedCell.symbol);
-  }, [selectedCell]);
+    return getVoicingsForSymbol(activeVoicingCell.symbol);
+  }, [activeVoicingCell?.symbol, activeVoicingCell?.index]);
 
   const scaleDef = useMemo(() => getScaleById(scaleId), [scaleId]);
   const manualChordOptions = useMemo(
@@ -525,12 +537,13 @@ useEffect(() => {
   };
 
   const handleSelectVoicing = (voicing: Voicing) => {
-    setCells((prev) =>
-      prev.map((cell) => (cell.index === selectedCell?.index ? { ...cell, voicing } : cell)),
-    );
-    if (selectedCell) {
-      playChord(voicing, { arpeggioSpread });
+    const targetIndex = activeVoicingCell?.index ?? selectedCell?.index ?? null;
+    if (targetIndex === null) {
+      return;
     }
+    setCells((prev) => prev.map((cell) => (cell.index === targetIndex ? { ...cell, voicing } : cell)));
+    setSelectedIndex(targetIndex);
+    playChord(voicing, { arpeggioSpread });
   };
 
   const handleAltChord = (symbol: string) => {
@@ -781,6 +794,9 @@ useEffect(() => {
             <button type="button" onClick={() => setShowSongModal(true)}>
               Songs
             </button>
+            <button type="button" className="blue" onClick={() => setShowChordDirectory(true)}>
+              Chord Directory
+            </button>
           </div>
           <div className="control-buttons export-actions">
             <span className="export-label">Export</span>
@@ -881,8 +897,9 @@ useEffect(() => {
           </nav>
           {panelTab === 'voicings' && (
             <ChordList
+              key={activeVoicingCell?.index ?? 'no-voicing-cell'}
               voicings={voicingOptions}
-              selectedId={selectedCell?.voicing?.id}
+              selectedId={activeVoicingCell?.voicing?.id}
               onSelect={handleSelectVoicing}
               onPlay={(voicing) => playChord(voicing, { arpeggioSpread })}
             />
@@ -961,6 +978,7 @@ useEffect(() => {
       <SampleLoadingOverlay message="Sample assets are loading…" />
       <SongManagerModal open={showSongModal} onClose={() => setShowSongModal(false)} current={currentSongPayload} onLoad={handleSongLoad} />
       <MixerModal open={showMixerModal} settings={mixerSettings} onChange={setMixerSettings} onClose={() => setShowMixerModal(false)} />
+      <ChordDirectoryModal open={showChordDirectory} onClose={() => setShowChordDirectory(false)} />
     </>
   );
 }

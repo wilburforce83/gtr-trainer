@@ -1,29 +1,12 @@
-import { Note } from '@tonaljs/tonal';
-import { STANDARD_TUNING, tuningToMidi } from '../lib/neck';
-
-const tuningMidi = tuningToMidi(STANDARD_TUNING);
-
-type Template = {
-  id: string;
-  chordKinds: string[];
-  layout: Array<{ string: number; interval: number }>;
-  muted?: number[];
-  name?: string;
-};
-
-const INTERVALS = {
-  ROOT: 0,
-  MINOR_THIRD: 3,
-  MAJOR_THIRD: 4,
-  PERFECT_FIFTH: 7,
-  SIX: 9,
-  MINOR_SEVENTH: 10,
-  MAJOR_SEVENTH: 11,
-  NINTH: 14,
-  ELEVENTH: 17,
-  THIRTEENTH: 21,
-  SHARP_ELEVENTH: 18,
-};
+import { KIND_INTERVALS, type ChordKind, formatVoicingId, resolveChordKind } from './chordKinds';
+import { MUTED_OFFSET, getFormsForKind, type ShapeForm } from './shapeLibrary';
+import {
+  findFretsForNote,
+  getStringPitchClass,
+  normalizeNoteName,
+  toPitchClass,
+  type NoteName,
+} from './noteUtils';
 
 export type Voicing = {
   chordKind: string;
@@ -33,146 +16,51 @@ export type Voicing = {
   id?: string;
 };
 
-const VOICING_TEMPLATES: Template[] = [
-  {
-    id: 'maj-root6-spread',
-    chordKinds: ['maj7', 'maj9', '6/9', 'maj9#11'],
-    name: 'Drop-2 (6th string)',
-    layout: [
-      { string: 6, interval: INTERVALS.ROOT },
-      { string: 4, interval: INTERVALS.MAJOR_SEVENTH },
-      { string: 3, interval: INTERVALS.MAJOR_THIRD },
-      { string: 2, interval: INTERVALS.PERFECT_FIFTH },
-      { string: 1, interval: INTERVALS.NINTH },
-    ],
-    muted: [5],
-  },
-  {
-    id: 'maj-root5-spread',
-    chordKinds: ['maj7', 'maj9', '6/9', 'maj9#11'],
-    name: 'Drop-2 (5th string)',
-    layout: [
-      { string: 5, interval: INTERVALS.ROOT },
-      { string: 4, interval: INTERVALS.MAJOR_SEVENTH },
-      { string: 3, interval: INTERVALS.MAJOR_THIRD },
-      { string: 2, interval: INTERVALS.NINTH },
-      { string: 1, interval: INTERVALS.PERFECT_FIFTH },
-    ],
-    muted: [6],
-  },
-  {
-    id: 'maj-root5-sus',
-    chordKinds: ['6/9', 'add9'],
-    name: '6/9 shell',
-    layout: [
-      { string: 5, interval: INTERVALS.ROOT },
-      { string: 4, interval: INTERVALS.SIX },
-      { string: 3, interval: INTERVALS.NINTH },
-      { string: 2, interval: INTERVALS.MAJOR_THIRD },
-    ],
-    muted: [6, 1],
-  },
-  {
-    id: 'min-root6-drop2',
-    chordKinds: ['m7', 'm9', 'm11'],
-    name: 'Drop-2 minor',
-    layout: [
-      { string: 6, interval: INTERVALS.ROOT },
-      { string: 4, interval: INTERVALS.MINOR_SEVENTH },
-      { string: 3, interval: INTERVALS.MINOR_THIRD },
-      { string: 2, interval: INTERVALS.PERFECT_FIFTH },
-      { string: 1, interval: INTERVALS.NINTH },
-    ],
-    muted: [5],
-  },
-  {
-    id: 'min-root5-drop2',
-    chordKinds: ['m7', 'm9', 'm11'],
-    name: 'Drop-2 minor (5)',
-    layout: [
-      { string: 5, interval: INTERVALS.ROOT },
-      { string: 4, interval: INTERVALS.MINOR_SEVENTH },
-      { string: 3, interval: INTERVALS.MINOR_THIRD },
-      { string: 2, interval: INTERVALS.NINTH },
-      { string: 1, interval: INTERVALS.ELEVENTH },
-    ],
-    muted: [6],
-  },
-  {
-    id: 'dom-root6',
-    chordKinds: ['7', '9', '13', '9sus4'],
-    name: 'Dominant shell (6)',
-    layout: [
-      { string: 6, interval: INTERVALS.ROOT },
-      { string: 4, interval: INTERVALS.MINOR_SEVENTH },
-      { string: 3, interval: INTERVALS.MAJOR_THIRD },
-      { string: 2, interval: INTERVALS.PERFECT_FIFTH },
-      { string: 1, interval: INTERVALS.THIRTEENTH },
-    ],
-    muted: [5],
-  },
-  {
-    id: 'dom-root5',
-    chordKinds: ['7', '9', '13', '9sus4'],
-    name: 'Dominant shell (5)',
-    layout: [
-      { string: 5, interval: INTERVALS.ROOT },
-      { string: 4, interval: INTERVALS.MINOR_SEVENTH },
-      { string: 3, interval: INTERVALS.MAJOR_THIRD },
-      { string: 2, interval: INTERVALS.NINTH },
-      { string: 1, interval: INTERVALS.PERFECT_FIFTH },
-    ],
-    muted: [6],
-  },
-  {
-    id: 'sus-root5',
-    chordKinds: ['9sus4', '7sus2'],
-    name: 'Sus cluster',
-    layout: [
-      { string: 5, interval: INTERVALS.ROOT },
-      { string: 4, interval: INTERVALS.PERFECT_FIFTH },
-      { string: 3, interval: INTERVALS.MAJOR_SEVENTH },
-      { string: 2, interval: INTERVALS.NINTH },
-    ],
-    muted: [6, 1],
-  },
-  {
-    id: 'maj-lydian',
-    chordKinds: ['maj9#11'],
-    name: 'Lydian upper-structure',
-    layout: [
-      { string: 6, interval: INTERVALS.ROOT },
-      { string: 4, interval: INTERVALS.MAJOR_SEVENTH },
-      { string: 3, interval: INTERVALS.SHARP_ELEVENTH },
-      { string: 2, interval: INTERVALS.NINTH },
-    ],
-    muted: [5, 1],
-  },
-];
+type IntervalCheck = {
+  requiredThird?: 3 | 4;
+  requiredSuspended?: 2 | 5;
+  requireSeventh?: boolean;
+  requireNinth?: boolean;
+};
+
+const KIND_GUARDS: Record<ChordKind, IntervalCheck> = {
+  '': { requiredThird: 4 },
+  m: { requiredThird: 3 },
+  6: { requiredThird: 4 },
+  m6: { requiredThird: 3 },
+  7: { requiredThird: 4, requireSeventh: true },
+  m7: { requiredThird: 3, requireSeventh: true },
+  maj7: { requiredThird: 4, requireSeventh: true },
+  9: { requiredThird: 4, requireSeventh: true, requireNinth: true },
+  m9: { requiredThird: 3, requireSeventh: true, requireNinth: true },
+  maj9: { requiredThird: 4, requireSeventh: true, requireNinth: true },
+  dim: { requiredThird: 3 },
+  aug: { requiredThird: 4 },
+  sus: { requiredSuspended: 5 },
+  sus2: { requiredSuspended: 2 },
+};
+
+const MAX_SPAN = 5;
+const MAX_FRET = 17;
+
+export function getCanonicalVoicings(root: NoteName, kind: ChordKind): Voicing[] {
+  const normalizedRoot = normalizeNoteName(root);
+  const forms = getFormsForKind(kind);
+  const candidates = forms.flatMap((form) => buildVoicingsFromForm(form, normalizedRoot));
+  const deduped = dedupeVoicings(candidates);
+  deduped.sort((a, b) => scoreVoicing(a) - scoreVoicing(b));
+  return deduped.slice(0, 4);
+}
 
 export function getVoicingsForSymbol(symbol: string): Voicing[] {
-  const match = symbol.match(/^([A-G][b#]?)(.*)$/i);
+  const match = symbol.trim().match(/^([A-G][b#]?)(.*)$/i);
   if (!match) {
     return [];
   }
-  const [, root, suffix] = match;
-  const chordKind = (suffix || 'maj7').toLowerCase();
-  return buildVoicings(root, chordKind);
-}
-
-export function buildVoicings(root: string, chordKind: string): Voicing[] {
-  const normalizedRoot = Note.pitchClass(root) ?? root;
-  const templates = VOICING_TEMPLATES.filter((template) =>
-    template.chordKinds.some((kind) => normalizeKind(kind) === normalizeKind(chordKind)),
-  );
-  const voicings = templates
-    .map((template) => buildVoicingFromTemplate(normalizedRoot, chordKind, template))
-    .filter((entry): entry is Voicing => Boolean(entry));
-  if (voicings.length) {
-    return voicings;
-  }
-  const fallback = fallbackVoicing(normalizedRoot, chordKind);
-  return fallback ? [fallback] : [];
+  const [, rawRoot, rawKind] = match;
+  const root = normalizeNoteName(rawRoot);
+  const kind = resolveChordKind(rawKind || '');
+  return getCanonicalVoicings(root, kind);
 }
 
 export function chooseVoicing(prev: Voicing | undefined, options: Voicing[]): Voicing {
@@ -195,103 +83,174 @@ export function chooseVoicing(prev: Voicing | undefined, options: Voicing[]): Vo
 }
 
 function measureMovement(a: Voicing, b: Voicing): number {
-  const byString = new Map<number, number>();
+  const map = new Map<number, number>();
   a.strings.forEach((entry) => {
     if (entry.fret >= 0) {
-      byString.set(entry.str, entry.fret);
+      map.set(entry.str, entry.fret);
     }
   });
   let total = 0;
   b.strings.forEach((entry) => {
     if (entry.fret < 0) {
-      total += 1;
+      total += 0.5;
       return;
     }
-    const prev = byString.get(entry.str);
+    const prev = map.get(entry.str);
     if (typeof prev === 'number') {
       total += Math.abs(prev - entry.fret);
     } else {
-      total += entry.fret / 2;
+      total += entry.fret;
     }
   });
   return total;
 }
 
-function buildVoicingFromTemplate(root: string, chordKind: string, template: Template): Voicing | null {
-  const layoutMap = new Map<number, number>();
-  const rootEntry = template.layout.find((entry) => entry.interval === INTERVALS.ROOT) ?? template.layout[0];
-  const rootMidi = matchMidiOnString(root, rootEntry.string);
-  if (rootMidi === null) {
-    return null;
+function buildVoicingsFromForm(form: ShapeForm, root: NoteName): Voicing[] {
+  const normalizedRoot = normalizeNoteName(root);
+  if (!form.movable && normalizedRoot !== form.referenceRoot) {
+    return [];
   }
-  for (const entry of template.layout) {
-    const stringMidi = tuningMidi[entry.string - 1];
-    if (typeof stringMidi !== 'number') {
-      return null;
+  const rootFrets = form.movable
+    ? findFretsForNote(normalizedRoot, form.rootString, form.maxRootFret ?? MAX_FRET, form.minRootFret ?? 0)
+    : [form.referenceRootFret];
+  const allowedIntervals = KIND_INTERVALS[form.chordKind];
+  const intervalRules = KIND_GUARDS[form.chordKind];
+  const rootPc = toPitchClass(normalizedRoot);
+  const voicings: Voicing[] = [];
+  rootFrets.forEach((rootFret) => {
+    if (form.maxRootFret !== undefined && rootFret > form.maxRootFret) {
+      return;
     }
-    let target = rootMidi + entry.interval;
-    while (target < stringMidi) {
-      target += 12;
+    if (form.minRootFret !== undefined && rootFret < form.minRootFret) {
+      return;
     }
-    let fret = target - stringMidi;
-    if (fret > 20) {
-      return null;
+    const strings = buildStringLayout(form, rootFret);
+    if (!strings) {
+      return;
     }
-    layoutMap.set(entry.string, fret);
-  }
+    if (!passesPlayability(strings)) {
+      return;
+    }
+    if (!validateIntervals(strings, rootPc, allowedIntervals, intervalRules)) {
+      return;
+    }
+    voicings.push({
+      chordKind: form.chordKind,
+      root: normalizedRoot,
+      strings,
+      name: form.label,
+      id: formatVoicingId(normalizedRoot, form.chordKind, form.id),
+    });
+  });
+  return voicings;
+}
+
+function buildStringLayout(form: ShapeForm, rootFret: number): { str: number; fret: number }[] | null {
+  const offsetMap = new Map<number, number>();
+  form.pattern.forEach((pattern) => {
+    offsetMap.set(pattern.str, pattern.fretOffset);
+  });
+  const muted = new Set<number>(form.muted ?? []);
+  const open = new Set<number>(form.openStrings ?? []);
   const strings: { str: number; fret: number }[] = [];
   for (let str = 6; str >= 1; str -= 1) {
-    if (layoutMap.has(str)) {
-      strings.push({ str, fret: layoutMap.get(str)! });
-    } else if (template.muted?.includes(str)) {
+    const offset = offsetMap.get(str);
+    if (offset !== undefined) {
+      if (offset <= MUTED_OFFSET) {
+        strings.push({ str, fret: -1 });
+        continue;
+      }
+      const fret = rootFret + offset;
+      if (fret < 0 || fret > MAX_FRET + 3) {
+        return null;
+      }
+      strings.push({ str, fret });
+      continue;
+    }
+    if (muted.has(str)) {
       strings.push({ str, fret: -1 });
-    } else {
-      strings.push({ str, fret: -1 });
+      continue;
+    }
+    if (open.has(str)) {
+      strings.push({ str, fret: 0 });
+      continue;
+    }
+    strings.push({ str, fret: -1 });
+  }
+  const hasSounding = strings.some((entry) => entry.fret >= 0);
+  return hasSounding ? strings : null;
+}
+
+function passesPlayability(strings: { str: number; fret: number }[]): boolean {
+  const fretted = strings.filter((entry) => entry.fret > 0);
+  if (!fretted.length) {
+    return true;
+  }
+  const frets = fretted.map((entry) => entry.fret);
+  const min = Math.min(...frets);
+  const max = Math.max(...frets);
+  if (max - min > MAX_SPAN) {
+    return false;
+  }
+  if (max > MAX_FRET) {
+    return false;
+  }
+  return true;
+}
+
+function validateIntervals(
+  strings: { str: number; fret: number }[],
+  rootPc: number,
+  allowed: number[],
+  rules: IntervalCheck,
+): boolean {
+  const pcs = strings.filter((entry) => entry.fret >= 0).map((entry) => getStringPitchClass(entry.str, entry.fret));
+  if (!pcs.includes(rootPc)) {
+    return false;
+  }
+  const intervals = pcs.map((pc) => ((pc - rootPc + 12) % 12));
+  if (intervals.some((interval) => !allowed.includes(interval))) {
+    return false;
+  }
+  if (rules.requiredThird && !intervals.includes(rules.requiredThird)) {
+    return false;
+  }
+  if (rules.requiredSuspended && !intervals.includes(rules.requiredSuspended)) {
+    return false;
+  }
+  if (rules.requireSeventh) {
+    const target = allowed.includes(10) && !allowed.includes(11) ? 10 : allowed.includes(11) ? 11 : 10;
+    if (!intervals.includes(target)) {
+      return false;
     }
   }
-  return {
-    chordKind,
-    root,
-    strings,
-    name: template.name,
-    id: `${template.id}-${root}-${chordKind}`,
-  };
-}
-
-function fallbackVoicing(root: string, chordKind: string): Voicing | null {
-  const template: Template = {
-    id: `fallback-${chordKind}`,
-    chordKinds: [chordKind],
-    layout: [
-      { string: 5, interval: INTERVALS.ROOT },
-      { string: 4, interval: chordKind.startsWith('m') ? INTERVALS.MINOR_THIRD : INTERVALS.MAJOR_THIRD },
-      { string: 3, interval: INTERVALS.MINOR_SEVENTH },
-      { string: 2, interval: INTERVALS.NINTH },
-    ],
-    muted: [6, 1],
-    name: 'Shell',
-  };
-  return buildVoicingFromTemplate(root, chordKind, template);
-}
-
-function matchMidiOnString(note: string, stringNumber: number): number | null {
-  const chroma = Note.chroma(note);
-  if (chroma === null) {
-    return null;
+  if (rules.requireNinth && !intervals.includes(2)) {
+    return false;
   }
-  const stringMidi = tuningMidi[stringNumber - 1];
-  const stringNote = STANDARD_TUNING[stringNumber - 1];
-  const stringChroma = Note.chroma(stringNote) ?? 0;
-  const diff = (chroma - stringChroma + 12) % 12;
-  for (let octave = 0; octave <= 2; octave += 1) {
-    const fret = diff + 12 * octave;
-    if (fret >= 0 && fret <= 15) {
-      return stringMidi + fret;
+  return true;
+}
+
+function dedupeVoicings(voicings: Voicing[]): Voicing[] {
+  const map = new Map<string, Voicing>();
+  voicings.forEach((voicing) => {
+    const key = voicing.strings.map((entry) => `${entry.str}:${entry.fret}`).join('|');
+    if (!map.has(key)) {
+      map.set(key, voicing);
     }
-  }
-  return null;
+  });
+  return Array.from(map.values());
 }
 
-function normalizeKind(kind: string): string {
-  return kind.replace(/\s+/g, '').toLowerCase();
+function scoreVoicing(voicing: Voicing): number {
+  const frets = voicing.strings.filter((entry) => entry.fret >= 0).map((entry) => entry.fret);
+  if (!frets.length) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const min = Math.min(...frets);
+  const max = Math.max(...frets);
+  const avg = frets.reduce((sum, fret) => sum + fret, 0) / frets.length;
+  const span = max - min;
+  const openBonus = voicing.strings.some((entry) => entry.fret === 0) ? -0.5 : 0;
+  const nameBonus = voicing.name?.toLowerCase().includes('open') ? -1 : 0;
+  return avg + span * 0.5 + openBonus + nameBonus;
 }
