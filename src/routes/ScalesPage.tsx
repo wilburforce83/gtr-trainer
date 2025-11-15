@@ -7,10 +7,10 @@ import Toolbar from '../components/Toolbar';
 import BackButton from '../components/BackButton';
 import SupportButton from '../components/SupportButton';
 import SampleLoadingOverlay from '../components/SampleLoadingOverlay';
+import useInstrumentScaleData from '../hooks/useInstrumentScaleData';
 import {
   DEFAULT_FRET_SPAN,
   INSTRUMENTS,
-  buildInstrumentScaleData,
   getInstrument,
   getInstrumentTuning,
   type InstrumentId,
@@ -55,16 +55,14 @@ function ScalesPage() {
 
   const scaleDef: ScaleDef = useMemo(() => getScaleById(scaleId), [scaleId]);
 
-  const { markers, highlightIds, sequence, tuningNotes, windows, clampedPositionIndex } = useMemo(() => {
-    return buildInstrumentScaleData({
-      instrument,
-      tuning,
-      key: keyName,
-      scale: scaleDef,
-      positionIndex,
-      fretSpan: FRET_SPAN,
-    });
-  }, [instrument, tuning, keyName, scaleDef, positionIndex]);
+  const { markers, highlightIds, sequence, tuningNotes, windows, clampedPositionIndex } = useInstrumentScaleData({
+    instrument,
+    tuning,
+    key: keyName,
+    scale: scaleDef,
+    positionIndex,
+    fretSpan: FRET_SPAN,
+  });
 
   useEffect(() => {
     if (clampedPositionIndex !== positionIndex) {

@@ -9,6 +9,7 @@ import Transport from '../components/Transport';
 import SongManagerModal, { type SongPayload } from '../components/SongManagerModal';
 import SampleLoadingOverlay from '../components/SampleLoadingOverlay';
 import MixerModal from '../components/MixerModal';
+import useInstrumentScaleData from '../hooks/useInstrumentScaleData';
 import {
   generateProgression,
   reharmonizeCell as reharmonizeHarmonyCell,
@@ -49,8 +50,8 @@ import { renderChordDiagram } from '../chords/svguitar';
 import FretboardView from '../components/FretboardView';
 import { SCALES, getScaleById, type ScaleDef } from '../scales';
 import {
+  DEFAULT_FRET_SPAN,
   INSTRUMENTS,
-  buildInstrumentScaleData,
   getInstrument,
   getInstrumentTuning,
   type InstrumentId,
@@ -60,7 +61,8 @@ import { STANDARD_TUNING, tuningToMidi } from '../lib/neck';
 const STORAGE_KEY = 'gtr-chords-state-v1';
 const RESOLUTION = '1/2';
 const KEY_OPTIONS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
-const DEFAULT_CHORD_SCALE_ID: ModeName = 'ionian';
+const DEFAULT_KEY_NAME = 'A';
+const DEFAULT_CHORD_SCALE_ID: ModeName = 'minorPentatonic';
 const SCALE_OPTIONS: Array<{ value: ModeName; label: string }> = SCALES.map((scale) => ({
   value: scale.id as ModeName,
   label: scale.name,
@@ -95,9 +97,10 @@ const clampOctaveShiftValue = (value: number) => {
 
 const tuningMidi = tuningToMidi(STANDARD_TUNING);
 
-const DEFAULT_SCALE_POSITION_INDEX = 1;
+const DEFAULT_SCALE_POSITION_INDEX = 0;
 const DEFAULT_SOLO_INSTRUMENT_ID: InstrumentId = 'guitar';
 const DEFAULT_SOLO_TUNING_ID = getInstrument(DEFAULT_SOLO_INSTRUMENT_ID).tunings[0]?.id ?? '';
+const DEFAULT_DRUM_PATTERN_INDEX = 2; // Midnight Bounce in neo-soul library
 
 function buildEmptyProgression(barCount: number): HarmonyCell[] {
   const totalCells = barCount * CELLS_PER_BAR;
@@ -111,7 +114,7 @@ function buildEmptyProgression(barCount: number): HarmonyCell[] {
 }
 
 export default function ChordsPage() {
-  const [keyName, setKeyName] = useState('C');
+  const [keyName, setKeyName] = useState(DEFAULT_KEY_NAME);
   const [scaleId, setScaleId] = useState<ModeName>(DEFAULT_CHORD_SCALE_ID);
   const [style, setStyle] = useState<StyleName>('neo-soul');
   const bars = 4;
@@ -133,7 +136,7 @@ export default function ChordsPage() {
   const [pianoOctaveShift, setPianoOctaveShift] = useState(DEFAULT_PIANO_OCTAVE_SHIFT);
   const [showSongModal, setShowSongModal] = useState(false);
   const [showMixerModal, setShowMixerModal] = useState(false);
-  const [drumPatternIndex, setDrumPatternIndex] = useState(0);
+  const [drumPatternIndex, setDrumPatternIndex] = useState(DEFAULT_DRUM_PATTERN_INDEX);
   const [mixerSettings, setMixerSettings] = useState<DrumMixerSettings>(DEFAULT_DRUM_MIXER);
   const drumsEnabled = drumPatternIndex !== -1;
   const [playbackIndicator, setPlaybackIndicator] = useState<{ index: number; duration: number; startedAt: number } | null>(null);
@@ -154,7 +157,7 @@ export default function ChordsPage() {
     }
     try {
       const parsed = JSON.parse(raw);
-      setKeyName(parsed.keyName ?? 'C');
+      setKeyName(parsed.keyName ?? DEFAULT_KEY_NAME);
       setScaleId((parsed.scaleId ?? parsed.mode ?? DEFAULT_CHORD_SCALE_ID) as ModeName);
       setStyle(parsed.style ?? 'neo-soul');
       setBpm(parsed.bpm ?? 84);
@@ -189,7 +192,7 @@ export default function ChordsPage() {
           ? Math.round(parsed.drumPatternIndex)
           : parsed.drumsEnabled === false
             ? -1
-            : 0;
+            : DEFAULT_DRUM_PATTERN_INDEX;
       setDrumPatternIndex(storedPatternIndex);
       setMixerSettings(readMixerSettings(parsed.mixer));
     } catch {
@@ -467,17 +470,14 @@ useEffect(() => {
     }),
     [keyName, scaleId, style, bpm, arpeggioSpread, pianoOctaveShift, cells, drumsEnabled, drumPatternIndex, mixerSettings],
   );
-  const soloScaleData = useMemo(
-    () =>
-      buildInstrumentScaleData({
-        instrument: soloInstrument,
-        tuning: soloTuning,
-        key: keyName,
-        scale: scaleDef,
-        positionIndex: scalePositionIndex,
-      }),
-    [soloInstrument, soloTuning, keyName, scaleDef, scalePositionIndex],
-  );
+  const soloScaleData = useInstrumentScaleData({
+    instrument: soloInstrument,
+    tuning: soloTuning,
+    key: keyName,
+    scale: scaleDef,
+    positionIndex: scalePositionIndex,
+    fretSpan: DEFAULT_FRET_SPAN,
+  });
   const {
     markers: scaleMarkers,
     highlightIds: scaleHighlightIds,
@@ -700,7 +700,7 @@ useEffect(() => {
         ? Math.round(payload.drumPatternIndex)
         : payload.drumsEnabled === false
           ? -1
-          : 0;
+          : DEFAULT_DRUM_PATTERN_INDEX;
     setDrumPatternIndex(nextPatternIndex);
     setMixerSettings(readMixerSettings(payload.mixer));
     setShowSongModal(false);
