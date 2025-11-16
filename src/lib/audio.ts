@@ -111,8 +111,11 @@ export async function playSequence(sequence: SequenceToken[], options: PlayOptio
     const loopEnabled = options.loop ?? false;
     sequencePart.loop = loopEnabled;
     if (loopEnabled) {
-      sequencePart.loopStart = subdivision;
-    sequencePart.loopEnd = sequence.length * subdivision;
+      sequencePart.loopStart = 0;
+      sequencePart.loopEnd = sequence.length * subdivision;
+    } else {
+      sequencePart.loopEnd = 0;
+    }
   }
   Tone.Transport.stop();
   Tone.Transport.cancel();
@@ -124,7 +127,7 @@ export async function playSequence(sequence: SequenceToken[], options: PlayOptio
   sequencePart.start(countInSeconds);
   Tone.Transport.start();
 }
-} 
+
 
 export function stopAll(): void {
   if (!isBrowser()) {
@@ -132,6 +135,7 @@ export function stopAll(): void {
   }
   disposeSequence();
   Tone.Transport.stop();
+  Tone.Transport.cancel();
   Tone.Transport.loop = false;
   Tone.Transport.loopStart = 0;
   Tone.Transport.loopEnd = 0;

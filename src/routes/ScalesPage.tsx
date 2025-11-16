@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Controls from '../components/Controls';
 import FretboardView from '../components/FretboardView';
@@ -10,7 +10,7 @@ import SampleLoadingOverlay from '../components/SampleLoadingOverlay';
 import useInstrumentScaleData from '../hooks/useInstrumentScaleData';
 import {
   DEFAULT_FRET_SPAN,
-  INSTRUMENTS,
+  VISIBLE_INSTRUMENTS,
   getInstrument,
   getInstrumentTuning,
   type InstrumentId,
@@ -43,6 +43,11 @@ function ScalesPage() {
 
   const fretboardRef = useRef<HTMLDivElement>(null);
   const tabRef = useRef<HTMLDivElement>(null);
+
+  const resetPlayback = useCallback(() => {
+    stopAll();
+    setIsPlaying(false);
+  }, []);
 
   const instrument = useMemo(() => getInstrument(instrumentId), [instrumentId]);
   const tuning = useMemo(() => getInstrumentTuning(instrument, tuningId), [instrument, tuningId]);
@@ -101,14 +106,19 @@ function ScalesPage() {
   }, [ambientHighlight]);
 
   useEffect(() => {
+    resetPlayback();
     return () => {
       stopAll();
     };
-  }, []);
+  }, [resetPlayback]);
 
   useEffect(() => {
     primeAudioUnlock();
   }, []);
+
+  useEffect(() => {
+    resetPlayback();
+  }, [resetPlayback, instrumentId, tuningId, keyName, scaleId, positionIndex]);
 
   const handlePlay = async () => {
     if (!sequence.length) {
@@ -120,8 +130,7 @@ function ScalesPage() {
   };
 
   const handleStop = () => {
-    stopAll();
-    setIsPlaying(false);
+    resetPlayback();
   };
 
   const exportFretboard = (format: 'svg' | 'png') => {
@@ -158,7 +167,7 @@ function ScalesPage() {
           <BackButton />
           <div className="page-heading">
             <p className="eyebrow">Scales Trainer</p>
-            <p className="page-title">Visualize every position across the neck.</p>
+            <p className="page-title">Visualize scales across the neck.</p>
           </div>
         </div>
         <div className="page-header__actions">
@@ -168,7 +177,7 @@ function ScalesPage() {
       </header>
 
       <Controls
-        instruments={INSTRUMENTS}
+        instruments={VISIBLE_INSTRUMENTS}
         instrumentId={instrumentId}
         onInstrumentChange={(value) => setInstrumentId(value as InstrumentId)}
         tuningOptions={instrument.tunings.map((option) => ({ id: option.id, label: option.label }))}

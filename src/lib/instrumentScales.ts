@@ -138,6 +138,7 @@ export type InstrumentTuning = {
   id: string;
   label: string;
   notes: MidiNote[];
+  geometryNotes?: MidiNote[];
 };
 
 export type InstrumentConfig = {
@@ -179,9 +180,13 @@ export const INSTRUMENTS: InstrumentConfig[] = [
     id: 'ukulele',
     label: 'Ukulele (GCEA)',
     tunings: [
-      { id: 'reentrant', label: 'High G (gCEA)', notes: [60, 64, 67, 69] },
+      {
+        id: 'reentrant',
+        label: 'High G (gCEA)',
+        notes: [67, 60, 64, 69],
+        geometryNotes: [55, 60, 64, 69],
+      },
       { id: 'linear', label: 'Low G (GCEA)', notes: [55, 60, 64, 69] },
-      { id: 'baritone', label: 'Baritone (DGBE)', notes: [50, 55, 59, 64] },
     ],
     frets: 15,
     positions: 4,
@@ -210,6 +215,12 @@ export const INSTRUMENTS: InstrumentConfig[] = [
     positionRadius: 2,
   },
 ];
+
+const HIDDEN_INSTRUMENT_IDS = new Set<InstrumentId>(['mandolin', 'banjo']);
+
+export const VISIBLE_INSTRUMENTS = INSTRUMENTS.filter(
+  (instrument) => !HIDDEN_INSTRUMENT_IDS.has(instrument.id),
+);
 
 const INSTRUMENT_MAP = new Map(INSTRUMENTS.map((instrument) => [instrument.id, instrument]));
 
@@ -356,8 +367,8 @@ function getPatternTemplateScale(scale: ScaleDef): ScaleDef | null {
   return null;
 }
 
-function canUsePatternPositions(instrument: InstrumentConfig, scale: ScaleDef, tuningMidi: number[]): boolean {
-  if (instrument.id !== 'guitar' || tuningMidi.length !== 6) {
+function canUsePatternPositions(scale: ScaleDef, tuningMidi: number[]): boolean {
+  if (!tuningMidi.length) {
     return false;
   }
   return Boolean(getPatternTemplateScale(scale));
@@ -374,7 +385,7 @@ function buildPatternPositions({
   scale: ScaleDef;
   tuningMidi: number[];
 }): PatternPositionResult | null {
-  if (!canUsePatternPositions(instrument, scale, tuningMidi)) {
+  if (!canUsePatternPositions(scale, tuningMidi)) {
     return null;
   }
   const canonicalScale = getPatternTemplateScale(scale);
@@ -619,13 +630,19 @@ export function buildInstrumentScaleData({
   clampedPositionIndex: number;
   displayTuningMidi: number[];
 } {
+  const geometrySource =
+    tuning.geometryNotes && tuning.geometryNotes.length === tuning.notes.length
+      ? tuning.geometryNotes
+      : tuning.notes;
   const displayTuningMidi = [...tuning.notes].reverse();
+  const geometryTuningMidi = [...geometrySource].reverse();
+  const enforceMinPerString = instrument.id !== 'guitar';
   const tuningNotes = displayTuningMidi.map((midi) => Note.fromMidi(midi) ?? 'E');
   const patternResult = buildPatternPositions({
     instrument,
     key,
     scale,
-    tuningMidi: displayTuningMidi,
+    tuningMidi: geometryTuningMidi,
   });
   const patternPositions = patternResult?.positions ?? [];
   const canonicalScale = patternResult?.canonicalScale ?? null;
@@ -700,6 +717,10 @@ export function buildInstrumentScaleData({
     const window = windows[index] ?? null;
     const highlight = new Set<string>();
     const canonicalIds = pattern?.ids ?? null;
+    const windowRange =
+      pattern && typeof pattern.startFret === 'number' && typeof pattern.endFret === 'number'
+        ? { startFret: pattern.startFret, endFret: pattern.endFret }
+        : window;
     if (canonicalIds && canonicalIds.size) {
       markers.forEach((marker) => {
         const pitchClass = ((marker.midi % 12) + 12) % 12;
@@ -713,6 +734,14 @@ export function buildInstrumentScaleData({
           highlight.add(marker.id);
         }
       });
+      if (enforceMinPerString) {
+        ensureMinimumNotesPerString({
+          highlight,
+          markers,
+          stringCount: displayTuningMidi.length,
+          window: windowRange,
+        });
+      }
       return highlight;
     }
     if (window) {
@@ -748,6 +777,14 @@ export function buildInstrumentScaleData({
           }
         });
       }
+      if (enforceMinPerString) {
+        ensureMinimumNotesPerString({
+          highlight,
+          markers,
+          stringCount: displayTuningMidi.length,
+          window,
+        });
+      }
       return highlight;
     }
     markers.forEach((marker) => {
@@ -755,6 +792,14 @@ export function buildInstrumentScaleData({
         highlight.add(marker.id);
       }
     });
+    if (enforceMinPerString) {
+      ensureMinimumNotesPerString({
+        highlight,
+        markers,
+        stringCount: displayTuningMidi.length,
+        window: null,
+      });
+    }
     return highlight;
   };
 
@@ -809,8 +854,51 @@ export function buildInstrumentScaleData({
     displayTuningMidi,
     positionHighlights: positionHighlightSets,
     allPositionHighlightIds,
-    positionColorMap,
+  positionColorMap,
   };
+}
+
+function ensureMinimumNotesPerString({
+  highlight,
+  markers,
+  stringCount,
+  minNotes = 2,
+  window,
+}: {
+  highlight: Set<string>;
+  markers: NoteMarker[];
+  stringCount: number;
+  minNotes?: number;
+  window?: PositionWindow | null;
+}): void {
+  if (!minNotes || minNotes <= 0) {
+    return;
+  }
+  const center = window ? (window.startFret + window.endFret) / 2 : 0;
+  for (let string = stringCount; string >= 1; string -= 1) {
+    const candidates = markers
+      .filter(
+        (marker) =>
+          marker.string === string &&
+          marker.inScale &&
+          (!window || (marker.fret >= window.startFret && marker.fret <= window.endFret)),
+      )
+      .sort((a, b) => Math.abs(a.fret - center) - Math.abs(b.fret - center));
+    if (!candidates.length) {
+      continue;
+    }
+    const current = candidates.filter((candidate) => highlight.has(candidate.id));
+    if (current.length >= minNotes) {
+      continue;
+    }
+    for (let idx = 0; idx < candidates.length && current.length < minNotes; idx += 1) {
+      const candidate = candidates[idx];
+      if (!highlight.has(candidate.id)) {
+        highlight.add(candidate.id);
+        current.push(candidate);
+      }
+    }
+  }
 }
 
 export function generateScalePositions(

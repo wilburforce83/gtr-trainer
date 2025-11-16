@@ -52,7 +52,7 @@ import FretboardView from '../components/FretboardView';
 import { SCALES, getScaleById, type ScaleDef } from '../scales';
 import {
   DEFAULT_FRET_SPAN,
-  INSTRUMENTS,
+  VISIBLE_INSTRUMENTS,
   getInstrument,
   getInstrumentTuning,
   type InstrumentId,
@@ -841,7 +841,7 @@ useEffect(() => {
                   <label>
                     Instrument
                     <select value={soloInstrumentId} onChange={(event) => setSoloInstrumentId(event.target.value as InstrumentId)}>
-                      {INSTRUMENTS.map((instrumentOption) => (
+                      {VISIBLE_INSTRUMENTS.map((instrumentOption) => (
                         <option key={instrumentOption.id} value={instrumentOption.id}>
                           {instrumentOption.label}
                         </option>

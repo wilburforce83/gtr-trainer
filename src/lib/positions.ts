@@ -30,8 +30,11 @@ export interface BuildPositionOptions {
   maxFret?: number;
 }
 
-const STRING_ORDER_LOW_TO_HIGH = [6, 5, 4, 3, 2, 1];
 const DEFAULT_MAX_FRET = 22;
+
+function buildStringOrder(stringCount: number): number[] {
+  return Array.from({ length: Math.max(1, stringCount) }, (_, idx) => stringCount - idx);
+}
 
 export function buildPositions({
   key,
@@ -41,8 +44,12 @@ export function buildPositions({
 }: BuildPositionOptions): PositionResult[] {
   const normalizedKey = normalizeKey(key);
   const system = resolvePositionSystem(scale) as PositionSystemType;
-  const patterns = system === '5BOX' ? getPentatonicPatterns() : getThreeNpsPatterns();
-  const rootMidi = resolveRootMidi(normalizedKey, tuningMidi);
+  const stringOrder = buildStringOrder(tuningMidi.length);
+  const patterns =
+    system === '5BOX'
+      ? getPentatonicPatterns(stringOrder.length)
+      : getThreeNpsPatterns(stringOrder.length);
+  const rootMidi = resolveRootMidi(normalizedKey, tuningMidi, maxFret);
   const positions: PositionResult[] = [];
 
   patterns.forEach((pattern, patternIndex) => {
@@ -50,8 +57,14 @@ export function buildPositions({
     const idSet = new Set<string>();
 
     pattern.steps.forEach((stepsOnString, idx) => {
-      const stringNumber = STRING_ORDER_LOW_TO_HIGH[idx];
+      const stringNumber = stringOrder[idx];
+      if (typeof stringNumber !== 'number') {
+        return;
+      }
       const stringMidi = tuningMidi[stringNumber - 1];
+      if (typeof stringMidi !== 'number') {
+        return;
+      }
 
       stepsOnString.forEach((step) => {
         const semitoneOffset = intervalForStep(scale.intervals, step);
@@ -95,21 +108,28 @@ function intervalForStep(intervals: number[], step: number): number {
   return intervals[index] + 12 * octave;
 }
 
-function resolveRootMidi(key: string, tuningMidi: number[]): number {
-  const string6Midi = tuningMidi[5];
+function resolveRootMidi(key: string, tuningMidi: number[], maxFret: number): number {
+  const lowestStringMidi = tuningMidi[tuningMidi.length - 1] ?? Note.midi(`${key}3`) ?? 0;
   const octaves = [2, 3, 1, 4, 5];
   for (const octave of octaves) {
     const midi = Note.midi(`${key}${octave}`);
     if (typeof midi === 'number') {
-      const diff = midi - string6Midi;
+      const diff = midi - lowestStringMidi;
       if (diff >= 0 && diff <= 12) {
         return midi;
       }
+    }
+  }
+  const highestReachable = (tuningMidi[0] ?? lowestStringMidi) + Math.max(0, maxFret);
+  for (let octave = 0; octave <= 7; octave += 1) {
+    const midi = Note.midi(`${key}${octave}`);
+    if (typeof midi === 'number' && midi >= lowestStringMidi && midi <= highestReachable) {
+      return midi;
     }
   }
   const fallback = Note.midi(`${key}3`);
   if (typeof fallback === 'number') {
     return fallback;
   }
-  return string6Midi;
+  return lowestStringMidi;
 }
