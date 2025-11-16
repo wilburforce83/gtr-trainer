@@ -238,6 +238,11 @@ export type PositionWindow = {
   endFret: number;
 };
 
+type FretRange = {
+  startFret: number;
+  endFret: number;
+};
+
 export const DEFAULT_FRET_SPAN = 4;
 const DEFAULT_POSITION_RADIUS = 2;
 const MAX_INTERVAL_STEPS = 3;
@@ -629,6 +634,9 @@ export function buildInstrumentScaleData({
   windows: PositionWindow[];
   clampedPositionIndex: number;
   displayTuningMidi: number[];
+  positionHighlights: Array<Set<string>>;
+  allPositionHighlightIds: Set<string>;
+  positionColorMap: Map<string, string>;
 } {
   const geometrySource =
     tuning.geometryNotes && tuning.geometryNotes.length === tuning.notes.length
@@ -653,7 +661,6 @@ export function buildInstrumentScaleData({
   }));
   const windows = patternWindows.length ? patternWindows : buildPositionWindows(instrument, fretSpan);
   const clampedPositionIndex = Math.min(Math.max(0, positionIndex), Math.max(0, windows.length - 1));
-  const activeWindow = windows[clampedPositionIndex] ?? null;
   const { pcs, rootPc } = buildScalePcs(key, scale);
   const pcSet = new Set(pcs);
   const canonicalPcSet = canonicalScale ? new Set(buildScalePcs(key, canonicalScale).pcs) : null;
@@ -717,10 +724,12 @@ export function buildInstrumentScaleData({
     const window = windows[index] ?? null;
     const highlight = new Set<string>();
     const canonicalIds = pattern?.ids ?? null;
-    const windowRange =
+    const windowRange: FretRange | null =
       pattern && typeof pattern.startFret === 'number' && typeof pattern.endFret === 'number'
         ? { startFret: pattern.startFret, endFret: pattern.endFret }
-        : window;
+        : window
+          ? { startFret: window.startFret, endFret: window.endFret }
+          : null;
     if (canonicalIds && canonicalIds.size) {
       markers.forEach((marker) => {
         const pitchClass = ((marker.midi % 12) + 12) % 12;
@@ -869,7 +878,7 @@ function ensureMinimumNotesPerString({
   markers: NoteMarker[];
   stringCount: number;
   minNotes?: number;
-  window?: PositionWindow | null;
+  window?: FretRange | null;
 }): void {
   if (!minNotes || minNotes <= 0) {
     return;
